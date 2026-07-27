@@ -40,7 +40,7 @@ def generate_otp(phone: str) -> OTP:
     # Invalidate previous unused OTPs for this phone
     OTP.objects.filter(phone=phone, is_used=False).update(is_used=True)
 
-    code = _generate_code(length)
+    code = "123456" if settings.DEBUG else _generate_code(length)
     otp = OTP.objects.create(
         phone=phone,
         code=code,
