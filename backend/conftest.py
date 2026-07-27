@@ -1,17 +1,27 @@
-import pytest
-from django.db import connections
-from django.db.utils import ConnectionHandler
+"""
+Shared test fixtures for TakeWay.
 
-@pytest.fixture(scope="session", autouse=True)
-def _configure_test_settings(django_test_environment):
-    from django.conf import settings
-    settings.DATABASES["default"] = {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": ":memory:",
-    }
-    settings.REST_FRAMEWORK = {
-        "DEFAULT_AUTHENTICATION_CLASSES": (
-            "rest_framework_simplejwt.authentication.JWTAuthentication",
-        )
-    }
-    connections["default"] = ConnectionHandler(settings.DATABASES)["default"]
+Database and Celery configuration is handled via takeway/test_settings.py
+(pointed to by pytest.ini). This file only contains reusable fixtures.
+"""
+
+import pytest
+
+
+@pytest.fixture
+def api_client():
+    """Return an unauthenticated DRF APIClient."""
+    from rest_framework.test import APIClient
+    return APIClient()
+
+
+@pytest.fixture
+def auth_api_client():
+    """Return an APIClient authenticated as a regular customer."""
+    from rest_framework.test import APIClient
+    from accounts.tests.factories import UserFactory
+
+    user = UserFactory(name="Test Customer")
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client, user
