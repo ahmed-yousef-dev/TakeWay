@@ -2,6 +2,7 @@
 Django==6.0.7
 djangorestframework==3.17.1
 drf-spectacular==0.30.0
+python-dotenv==1.2.2
 
 # ── Auth ────────────────────────────────────────────────
 djangorestframework-simplejwt==5.5.1
