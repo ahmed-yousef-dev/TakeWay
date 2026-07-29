@@ -33,16 +33,24 @@ class Command(BaseCommand):
     help = "Seeds demo data for Phase 1A (Locations, Accounts, Businesses, Products, Variants, Working Hours)"
 
     def add_arguments(self, parser):
-        parser.add_argument(
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument(
             "--clear",
             action="store_true",
-            help="Clear existing Phase 1A dummy data before seeding",
+            help="ONLY clear existing Phase 1A dummy data (no seeding)",
+        )
+        group.add_argument(
+            "--reset",
+            action="store_true",
+            help="Clear existing Phase 1A dummy data, AND THEN seed new data",
         )
 
     @transaction.atomic
     def handle(self, *args, **options):
-        clear = options["clear"]
-        if clear:
+        clear = options.get("clear", False)
+        reset = options.get("reset", False)
+
+        if clear or reset:
             self.stdout.write(self.style.WARNING("Clearing existing Phase 1A data..."))
             ProductVariant.objects.all().delete()
             Product.objects.all().delete()
@@ -55,6 +63,9 @@ class Command(BaseCommand):
             Location.objects.all().delete()
             Governorate.objects.all().delete()
             self.stdout.write(self.style.SUCCESS("Existing data cleared successfully!"))
+            
+            if clear:
+                return
 
         self.stdout.write(self.style.MIGRATE_HEADING("Seeding Phase 1A Demo Data..."))
 
