@@ -7,6 +7,9 @@ from django.utils import timezone
 
 from accounts.models import OTP, User
 
+# Default password used for all factory-created test users.
+TEST_PASSWORD = "TestPass123"
+
 
 class UserFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -17,10 +20,12 @@ class UserFactory(factory.django.DjangoModelFactory):
     role = User.Role.CUSTOMER
     location = None
     is_active = True
+    # Provide a default usable password so factory users can log in.
+    password = TEST_PASSWORD
 
     @classmethod
     def _create(cls, model_class, *args, **kwargs):
-        """Use create_user so the manager handles password correctly."""
+        """Use create_user so the manager hashes the password correctly."""
         manager = cls._get_manager(model_class)
         return manager.create_user(*args, **kwargs)
 
