@@ -24,15 +24,15 @@ class RequestOTPSerializer(serializers.Serializer):
 
 class VerifyOTPSerializer(serializers.Serializer):
     """
-    Validates phone + OTP code.
+    Validates phone + OTP code for new-user registration.
 
-    On first-time registration (user doesn't exist yet), name and location
-    are required. On subsequent logins they are ignored.
+    name and location are required for new users; password and
+    password_confirm are always required (set during registration).
     """
 
     phone = serializers.CharField(max_length=15)
     code = serializers.CharField(max_length=6, min_length=6)
-    # Registration fields — only required for new users
+    # Registration fields
     name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     # read_only=True is a placeholder; __init__ replaces it with a proper queryset.
     location = serializers.PrimaryKeyRelatedField(
@@ -40,6 +40,9 @@ class VerifyOTPSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+    # Password fields — required for registration
+    password = serializers.CharField(write_only=True, min_length=8)
+    password_confirm = serializers.CharField(write_only=True, min_length=8)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -59,6 +62,100 @@ class VerifyOTPSerializer(serializers.Serializer):
         if not value.isdigit():
             raise serializers.ValidationError(_("OTP code must contain only digits."))
         return value
+
+    def validate(self, attrs):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        password = attrs.get("password")
+        password_confirm = attrs.get("password_confirm")
+
+        if password != password_confirm:
+            raise serializers.ValidationError(
+                {"password_confirm": _("Passwords do not match.")}
+            )
+
+        try:
+            validate_password(password)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"password": list(exc.messages)})
+
+        return attrs
+
+
+class LoginSerializer(serializers.Serializer):
+    """Validates phone + password for login."""
+
+    phone = serializers.CharField(max_length=15)
+    password = serializers.CharField(write_only=True)
+
+    def validate_phone(self, value: str) -> str:
+        validate_egyptian_phone(value)
+        return normalise_phone(value)
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    """Validates the OTP-based password reset payload."""
+
+    phone = serializers.CharField(max_length=15)
+    code = serializers.CharField(max_length=6, min_length=6)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    new_password_confirm = serializers.CharField(write_only=True, min_length=8)
+
+    def validate_phone(self, value: str) -> str:
+        validate_egyptian_phone(value)
+        return normalise_phone(value)
+
+    def validate_code(self, value: str) -> str:
+        if not value.isdigit():
+            raise serializers.ValidationError(_("OTP code must contain only digits."))
+        return value
+
+    def validate(self, attrs):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        new_password = attrs.get("new_password")
+        new_password_confirm = attrs.get("new_password_confirm")
+
+        if new_password != new_password_confirm:
+            raise serializers.ValidationError(
+                {"new_password_confirm": _("Passwords do not match.")}
+            )
+
+        try:
+            validate_password(new_password)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"new_password": list(exc.messages)})
+
+        return attrs
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Validates the authenticated change-password payload."""
+
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    new_password_confirm = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, attrs):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        new_password = attrs.get("new_password")
+        new_password_confirm = attrs.get("new_password_confirm")
+
+        if new_password != new_password_confirm:
+            raise serializers.ValidationError(
+                {"new_password_confirm": _("Passwords do not match.")}
+            )
+
+        try:
+            validate_password(new_password)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"new_password": list(exc.messages)})
+
+        return attrs
 
 
 # ── User profile serializers ──────────────────────────────────────────────────
