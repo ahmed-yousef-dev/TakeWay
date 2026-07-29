@@ -3,8 +3,9 @@ Custom User model and OTP model for TakeWay.
 
 Design decisions:
 - Phone number is the primary identifier (not email or username).
-- Passwords are only set for superusers (Django Admin access).
-  Regular customers authenticate exclusively via OTP.
+- All users (customers and owners) authenticate with phone + password.
+  OTP is used only for registration (to verify ownership of the phone)
+  and for password recovery.
 - The User model has a FK to locations.Location so we can scope content
   to the user's selected village/city.
 - OTP stores phone directly (not a FK to User) because an OTP can be
@@ -23,18 +24,16 @@ from accounts.validators import validate_egyptian_phone
 class UserManager(BaseUserManager):
     """Custom manager for the phone-based User model."""
 
-    def create_user(self, phone: str, name: str, password=None, **extra_fields):
+    def create_user(self, phone: str, name: str, password: str, **extra_fields):
         if not phone:
             raise ValueError(_("Phone number is required."))
         if not name:
             raise ValueError(_("Name is required."))
+        if not password:
+            raise ValueError(_("Password is required."))
 
         user = self.model(phone=phone, name=name, **extra_fields)
-        # Customers do not have usable passwords — OTP auth only.
-        if password:
-            user.set_password(password)
-        else:
-            user.set_unusable_password()
+        user.set_password(password)
         user.save(using=self._db)
         return user
 
