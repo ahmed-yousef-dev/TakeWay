@@ -142,7 +142,7 @@ class Command(BaseCommand):
             admin_user.save()
 
         # Customer 1 (Banha)
-        customer_banha, _ = User.objects.get_or_create(
+        customer_banha, customer_banha_created = User.objects.get_or_create(
             phone="01099991111",
             defaults={
                 "name": "أحمد علي (مستخدم بنها)",
@@ -150,9 +150,12 @@ class Command(BaseCommand):
                 "location": banha,
             },
         )
+        if customer_banha_created:
+            customer_banha.set_password("password123")
+            customer_banha.save()
 
         # Customer 2 (Arab El-Raml)
-        customer_raml, _ = User.objects.get_or_create(
+        customer_raml, customer_raml_created = User.objects.get_or_create(
             phone="01088882222",
             defaults={
                 "name": "محمود حسن (مستخدم عرب الرمل)",
@@ -160,32 +163,58 @@ class Command(BaseCommand):
                 "location": arab_el_raml,
             },
         )
+        if customer_raml_created:
+            customer_raml.set_password("password123")
+            customer_raml.save()
 
         # Owners
-        owner_koshary, _ = User.objects.get_or_create(
+        owner_koshary, owner_koshary_created = User.objects.get_or_create(
             phone="01011113333",
             defaults={"name": "الأسطى سعيد", "role": User.Role.BUSINESS_OWNER, "location": banha},
         )
-        owner_basha, _ = User.objects.get_or_create(
+        if owner_koshary_created:
+            owner_koshary.set_password("password123")
+            owner_koshary.save()
+
+        owner_basha, owner_basha_created = User.objects.get_or_create(
             phone="01022224444",
             defaults={"name": "الحاج إبراهيم", "role": User.Role.BUSINESS_OWNER, "location": banha},
         )
-        owner_ezaby, _ = User.objects.get_or_create(
+        if owner_basha_created:
+            owner_basha.set_password("password123")
+            owner_basha.save()
+
+        owner_ezaby, owner_ezaby_created = User.objects.get_or_create(
             phone="01033335555",
             defaults={"name": "د. طارق مصطفى", "role": User.Role.BUSINESS_OWNER, "location": banha},
         )
-        owner_pizza, _ = User.objects.get_or_create(
+        if owner_ezaby_created:
+            owner_ezaby.set_password("password123")
+            owner_ezaby.save()
+
+        owner_pizza, owner_pizza_created = User.objects.get_or_create(
             phone="01044446666",
             defaults={"name": "الشيف هاني", "role": User.Role.BUSINESS_OWNER, "location": quesna},
         )
-        owner_baraka, _ = User.objects.get_or_create(
+        if owner_pizza_created:
+            owner_pizza.set_password("password123")
+            owner_pizza.save()
+
+        owner_baraka, owner_baraka_created = User.objects.get_or_create(
             phone="01055557777",
             defaults={"name": "المعلم رجب", "role": User.Role.BUSINESS_OWNER, "location": arab_el_raml},
         )
-        owner_raml_bakery, _ = User.objects.get_or_create(
+        if owner_baraka_created:
+            owner_baraka.set_password("password123")
+            owner_baraka.save()
+
+        owner_raml_bakery, owner_raml_bakery_created = User.objects.get_or_create(
             phone="01066668888",
             defaults={"name": "أبو حامد", "role": User.Role.BUSINESS_OWNER, "location": arab_el_raml},
         )
+        if owner_raml_bakery_created:
+            owner_raml_bakery.set_password("password123")
+            owner_raml_bakery.save()
 
         self.stdout.write(self.style.SUCCESS("[OK] Test Accounts created (Admin, Customers, Owners)"))
 
@@ -544,6 +573,7 @@ class Command(BaseCommand):
                 "\nAdmin user:  Phone: 01001234567 | Password: AdminPassword123!"
                 "\nCustomers:   Phone: 01099991111 (Banha), 01088882222 (Arab El-Raml)"
                 "\nOwners:      Phone: 01011113333, 01022224444, 01033335555, etc."
+                "\nDefault password for all non-admin users: password123"
                 "\n---------------------------------------------------"
             )
         )
