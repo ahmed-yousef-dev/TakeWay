@@ -103,14 +103,14 @@ class TestGenerateOTP:
 class TestVerifyOTP:
     def test_valid_otp_returns_user(self):
         OTPFactory(phone="01012345678", code="123456")
-        user = verify_otp("01012345678", "123456")
+        user = verify_otp("01012345678", "123456", password="ValidPass123!", name="Test User")
         assert user is not None
         assert user.phone == "01012345678"
 
     def test_first_login_creates_user(self):
         OTPFactory(phone="01099999999", code="654321")
         assert not User.objects.filter(phone="01099999999").exists()
-        user = verify_otp("01099999999", "654321")
+        user = verify_otp("01099999999", "654321", password="ValidPass123!", name="Test User")
         assert User.objects.filter(phone="01099999999").exists()
 
     def test_returning_user_not_duplicated(self):
@@ -141,7 +141,7 @@ class TestVerifyOTP:
 
     def test_otp_marked_used_after_verification(self):
         otp = OTPFactory(phone="01012345678", code="123456")
-        verify_otp("01012345678", "123456")
+        verify_otp("01012345678", "123456", password="ValidPass123!", name="Test User")
         otp.refresh_from_db()
         assert otp.is_used is True
 
@@ -167,6 +167,6 @@ class TestUserModel:
         assert "Ahmed Ali" in str(user)
         assert "01012345678" in str(user)
 
-    def test_customer_has_unusable_password(self):
+    def test_customer_has_usable_password(self):
         user = UserFactory()
-        assert not user.has_usable_password()
+        assert user.has_usable_password()
