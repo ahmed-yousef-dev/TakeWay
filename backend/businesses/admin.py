@@ -17,7 +17,7 @@ from businesses.models import (
 
 @admin.register(BusinessCategory)
 class BusinessCategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "sort_order", "is_active", "business_count")
+    list_display = ("id", "name", "sort_order", "is_active", "business_count")
     list_editable = ("sort_order", "is_active")
     search_fields = ("name",)
     ordering = ("sort_order", "name")
@@ -43,6 +43,7 @@ class ProductCategoryInline(admin.TabularInline):
 @admin.register(Business)
 class BusinessAdmin(admin.ModelAdmin):
     list_display = (
+        "id",
         "name",
         "category",
         "location",
@@ -78,6 +79,7 @@ class ProductVariantInline(admin.TabularInline):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = (
+        "id",
         "name",
         "business",
         "product_category",
@@ -95,7 +97,7 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(ProductCategory)
 class ProductCategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "business", "sort_order", "is_active")
+    list_display = ("id", "name", "business", "sort_order", "is_active")
     list_filter = ("is_active",)
     search_fields = ("name", "business__name")
     list_editable = ("sort_order", "is_active")
