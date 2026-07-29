@@ -54,12 +54,13 @@ def generate_otp(phone: str) -> OTP:
     return otp
 
 
-def verify_otp(phone: str, code: str) -> User:
+def verify_otp(phone: str, code: str, password: str | None = None, name: str = "") -> User:
     """
     Verify *code* for *phone* and return the associated User.
 
     - Raises ValueError with a user-safe message on any failure.
-    - Creates the User account if this is the first-time login.
+    - Creates the User account (with *password*) if this is the first-time
+      registration.  *password* is required for new users.
     - Marks the OTP as used on success.
     """
     phone = normalise_phone(phone)
@@ -80,13 +81,18 @@ def verify_otp(phone: str, code: str) -> User:
     otp.is_used = True
     otp.save(update_fields=["is_used"])
 
-    # Get or create the user account
-    user, created = User.objects.get_or_create(
-        phone=phone,
-        defaults={"name": ""},  # name will be set during registration step
-    )
+    # Determine if the user already exists
+    user_exists = User.objects.filter(phone=phone).exists()
 
-    if created:
+    if user_exists:
+        # Existing user — this path is only reached via forgot-password flow,
+        # which calls reset_password() directly.  Nothing to do here.
+        user = User.objects.get(phone=phone)
+    else:
+        # New user — registration: password is mandatory
+        if not password:
+            raise ValueError("Password is required for new user registration.")
+        user = User.objects.create_user(phone=phone, name=name or "", password=password)
         logger.info("New user created for phone %s", phone)
 
     return user
@@ -105,3 +111,78 @@ def get_tokens_for_user(user: User) -> dict:
         "access": str(refresh.access_token),
         "refresh": str(refresh),
     }
+
+
+# ── Password-based auth helpers ───────────────────────────────────────────────
+
+
+def authenticate_user(phone: str, password: str) -> User:
+    """
+    Validate *phone* + *password* credentials and return the matching User.
+
+    Raises ValueError with a generic, user-safe message on any failure
+    (wrong phone, wrong password, inactive account) — intentionally vague
+    to avoid user enumeration.
+    """
+    phone = normalise_phone(phone)
+    try:
+        user = User.objects.get(phone=phone)
+    except User.DoesNotExist:
+        raise ValueError("Invalid phone number or password.")
+
+    if not user.is_active:
+        raise ValueError("Invalid phone number or password.")
+
+    if not user.check_password(password):
+        raise ValueError("Invalid phone number or password.")
+
+    return user
+
+
+def reset_password(phone: str, code: str, new_password: str) -> User:
+    """
+    Verify *code* for *phone* (forgot-password OTP flow) and set *new_password*.
+
+    - Raises ValueError on any OTP validation failure.
+    - Returns the updated User instance.
+    """
+    phone = normalise_phone(phone)
+
+    try:
+        otp = OTP.objects.filter(
+            phone=phone,
+            code=code,
+            is_used=False,
+        ).latest("created_at")
+    except OTP.DoesNotExist:
+        raise ValueError("Invalid OTP code.")
+
+    if otp.is_expired:
+        raise ValueError("OTP has expired. Please request a new one.")
+
+    otp.is_used = True
+    otp.save(update_fields=["is_used"])
+
+    try:
+        user = User.objects.get(phone=phone)
+    except User.DoesNotExist:
+        raise ValueError("No account found for this phone number.")
+
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+    logger.info("Password reset for phone %s", phone)
+    return user
+
+
+def change_password(user: User, old_password: str, new_password: str) -> None:
+    """
+    Change *user*'s password after verifying *old_password*.
+
+    Raises ValueError if *old_password* is incorrect.
+    """
+    if not user.check_password(old_password):
+        raise ValueError("Current password is incorrect.")
+
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+    logger.info("Password changed for user %s", user.pk)
