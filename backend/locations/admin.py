@@ -31,6 +31,7 @@ class GovernorateAdmin(admin.ModelAdmin):
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
     list_display = (
+        "id",
         "name",
         "governorate",
         "type",
