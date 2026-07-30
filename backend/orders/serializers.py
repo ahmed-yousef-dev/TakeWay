@@ -10,7 +10,8 @@ Includes:
 - CheckoutSerializer          — Input validation for the checkout endpoint
 - OrderItemSerializer         — Read representation of a snapshotted order item
 - SubOrderSerializer          — Read representation of a sub-order (per business)
-- OrderSerializer             — Full order response
+- OrderSerializer             — Full order response (detail)
+- OrderListSerializer         — Lightweight order summary for the list endpoint
 """
 
 from decimal import Decimal
@@ -291,3 +292,40 @@ class OrderSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+
+class OrderListSerializer(serializers.ModelSerializer):
+    """
+    Lightweight order summary for the history list endpoint.
+
+    Intentionally omits sub_orders / items to keep list responses fast.
+    Clients can fetch the full detail with OrderSerializer when needed.
+    """
+
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    address_label = serializers.CharField(
+        source="delivery_address.get_label_display", read_only=True
+    )
+    address_details = serializers.CharField(
+        source="delivery_address.address_details", read_only=True
+    )
+    business_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "status",
+            "status_display",
+            "address_label",
+            "address_details",
+            "subtotal",
+            "delivery_fee",
+            "total_amount",
+            "business_count",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_business_count(self, obj: Order) -> int:
+        return obj.sub_orders.count()
