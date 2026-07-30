@@ -688,3 +688,228 @@ class TestOrderCancelAPI:
         anon = APIClient()
         response = anon.post(self._cancel_url(order))
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+# ---------------------------------------------------------------------------
+# AnythingRequest API
+# ---------------------------------------------------------------------------
+
+import io
+from django.core.files.uploadedfile import SimpleUploadedFile
+from orders.models import AnythingRequest, AnythingRequestImage
+
+
+def _make_fake_image(name="test.jpg"):
+    """Return a minimal valid JPEG bytes object wrapped in a SimpleUploadedFile."""
+    # Minimal JPEG header (SOI + EOI markers) — just enough to pass ImageField validation
+    jpeg_bytes = (
+        b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+        b"\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t"
+        b"\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a"
+        b"\x1f\x1e\x1d\x1a\x1c\x1c $.' \",#\x1c\x1c(7),01444\x1f'9=82<.342\x1e"
+        b"\x1b\x1c \xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00"
+        b"\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00"
+        b"\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b"
+        b"\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xf5\xd4\x00\x00\x00\xff\xd9"
+    )
+    return SimpleUploadedFile(name, jpeg_bytes, content_type="image/jpeg")
+
+
+@pytest.mark.django_db
+class TestAnythingRequestAPI:
+    """
+    Coverage for POST/GET /api/v1/anything-requests/ and the cancel action.
+    """
+
+    LIST_URL = "/api/v1/anything-requests/"
+
+    @staticmethod
+    def _detail_url(obj):
+        return f"/api/v1/anything-requests/{obj.pk}/"
+
+    @staticmethod
+    def _cancel_url(obj):
+        return f"/api/v1/anything-requests/{obj.pk}/cancel/"
+
+    def setup_method(self):
+        location = LocationFactory(minimum_order_amount=Decimal("20.00"))
+        self.user = UserFactory(location=location)
+        self.address = DeliveryAddress.objects.create(
+            user=self.user, address_details="Village square"
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    # ------------------------------------------------------------------
+    # Create
+    # ------------------------------------------------------------------
+
+    def test_create_text_only_request(self):
+        """Customer can submit a text-only AnythingRequest."""
+        payload = {
+            "delivery_address_id": self.address.pk,
+            "request_text": "I need a kilo of fresh dates.",
+        }
+        response = self.client.post(self.LIST_URL, payload, format="json")
+
+        assert response.status_code == status.HTTP_201_CREATED
+        data = response.json()
+        assert data["request_text"] == payload["request_text"]
+        assert data["status"] == AnythingRequest.Status.PENDING
+        assert data["images"] == []
+        assert AnythingRequest.objects.filter(customer=self.user).count() == 1
+
+    def test_create_request_with_images(self, settings, tmp_path):
+        """Customer can attach image files to an AnythingRequest."""
+        settings.MEDIA_ROOT = str(tmp_path)
+
+        img = _make_fake_image("item.jpg")
+        payload = {
+            "delivery_address_id": self.address.pk,
+            "request_text": "Find me this item.",
+            "images": [img],
+        }
+        response = self.client.post(self.LIST_URL, payload, format="multipart")
+
+        assert response.status_code == status.HTTP_201_CREATED
+        data = response.json()
+        assert len(data["images"]) == 1
+        assert AnythingRequestImage.objects.count() == 1
+
+    def test_create_request_with_foreign_address_rejected(self):
+        """Using another user's address must return 400."""
+        other_user = UserFactory()
+        other_address = DeliveryAddress.objects.create(
+            user=other_user, address_details="Other place"
+        )
+        payload = {
+            "delivery_address_id": other_address.pk,
+            "request_text": "Sneak in with another's address.",
+        }
+        response = self.client.post(self.LIST_URL, payload, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_create_request_missing_text_returns_400(self):
+        """request_text is required."""
+        payload = {"delivery_address_id": self.address.pk}
+        response = self.client.post(self.LIST_URL, payload, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_unauthenticated_create_returns_401(self):
+        payload = {
+            "delivery_address_id": self.address.pk,
+            "request_text": "Anything?",
+        }
+        anon = APIClient()
+        response = anon.post(self.LIST_URL, payload, format="json")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    # ------------------------------------------------------------------
+    # List
+    # ------------------------------------------------------------------
+
+    def test_list_returns_only_own_requests(self):
+        """Customers can only see their own requests."""
+        AnythingRequest.objects.create(
+            customer=self.user,
+            delivery_address=self.address,
+            request_text="My request",
+        )
+        other = UserFactory()
+        other_addr = DeliveryAddress.objects.create(user=other, address_details="Elsewhere")
+        AnythingRequest.objects.create(
+            customer=other,
+            delivery_address=other_addr,
+            request_text="Not mine",
+        )
+
+        response = self.client.get(self.LIST_URL)
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.json()["results"]) == 1
+
+    def test_list_newest_first(self):
+        """Requests are ordered most recent first."""
+        r1 = AnythingRequest.objects.create(
+            customer=self.user,
+            delivery_address=self.address,
+            request_text="First",
+        )
+        r2 = AnythingRequest.objects.create(
+            customer=self.user,
+            delivery_address=self.address,
+            request_text="Second",
+        )
+        response = self.client.get(self.LIST_URL)
+        ids = [item["id"] for item in response.json()["results"]]
+        assert ids == [r2.pk, r1.pk]
+
+    # ------------------------------------------------------------------
+    # Detail
+    # ------------------------------------------------------------------
+
+    def test_retrieve_returns_full_detail_with_admin_note(self):
+        """Detail endpoint exposes images and admin_note."""
+        req = AnythingRequest.objects.create(
+            customer=self.user,
+            delivery_address=self.address,
+            request_text="Need something special.",
+            admin_note="We are looking into it.",
+        )
+        response = self.client.get(self._detail_url(req))
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["admin_note"] == "We are looking into it."
+        assert "images" in data
+
+    def test_cannot_retrieve_another_users_request(self):
+        """Attempting to view another user's request returns 404."""
+        other = UserFactory()
+        other_addr = DeliveryAddress.objects.create(user=other, address_details="Elsewhere")
+        other_req = AnythingRequest.objects.create(
+            customer=other,
+            delivery_address=other_addr,
+            request_text="Not yours.",
+        )
+        response = self.client.get(self._detail_url(other_req))
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    # ------------------------------------------------------------------
+    # Cancel
+    # ------------------------------------------------------------------
+
+    def test_cancel_pending_request_soft_deletes(self):
+        """Cancelling a pending request marks is_active=False."""
+        req = AnythingRequest.objects.create(
+            customer=self.user,
+            delivery_address=self.address,
+            request_text="Cancel me.",
+        )
+        response = self.client.post(self._cancel_url(req))
+        assert response.status_code == status.HTTP_200_OK
+        req.refresh_from_db()
+        assert req.is_active is False
+
+    def test_cancel_non_pending_request_returns_400(self):
+        """Only pending requests can be cancelled."""
+        req = AnythingRequest.objects.create(
+            customer=self.user,
+            delivery_address=self.address,
+            request_text="Already quoted.",
+            status=AnythingRequest.Status.QUOTED,
+        )
+        response = self.client.post(self._cancel_url(req))
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "pending" in response.json()["detail"].lower()
+
+    def test_cannot_cancel_another_users_request(self):
+        """A customer cannot cancel someone else's request."""
+        other = UserFactory()
+        other_addr = DeliveryAddress.objects.create(user=other, address_details="Elsewhere")
+        other_req = AnythingRequest.objects.create(
+            customer=other,
+            delivery_address=other_addr,
+            request_text="Not yours.",
+        )
+        response = self.client.post(self._cancel_url(other_req))
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
