@@ -287,6 +287,33 @@ class OrderItem(TimestampMixin):
             name += f" ({self.variant_name})"
         return f"{self.quantity} x {name}"
 
+    @classmethod
+    def create_snapshot(cls, cart_item, sub_order):
+        """
+        Creates an immutable OrderItem snapshot from a CartItem.
+        Locks in the current price and names so future catalog edits don't affect this order.
+        """
+        if cart_item.variant:
+            unit_price = cart_item.variant.selling_price
+            variant_name = cart_item.variant.name
+        else:
+            unit_price = cart_item.product.selling_price
+            variant_name = ""
+
+        total_price = unit_price * cart_item.quantity
+
+        return cls(
+            sub_order=sub_order,
+            product=cart_item.product,
+            variant=cart_item.variant,
+            product_name=cart_item.product.name,
+            variant_name=variant_name,
+            unit_price=unit_price,
+            quantity=cart_item.quantity,
+            total_price=total_price,
+            note=cart_item.note
+        )
+
 
 class AnythingRequest(SoftDeleteMixin, TimestampMixin):
     """
