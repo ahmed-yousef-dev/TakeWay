@@ -625,6 +625,39 @@ class Command(BaseCommand):
             },
         )
 
+        banner_quesna, _ = Banner.objects.get_or_create(
+            title="أفضل بيتزا في قويسنا الآن على تيك واي",
+            defaults={
+                "target_type": Banner.TargetType.BUSINESS,
+                "target_id": biz_pizza.id,
+                "location": quesna,
+                "sort_order": 1,
+                "is_active": True,
+            },
+        )
+
+        banner_arab_raml, _ = Banner.objects.get_or_create(
+            title="مشويات البركة - خصم 30 جنيه",
+            defaults={
+                "target_type": Banner.TargetType.BUSINESS,
+                "target_id": biz_baraka.id,
+                "location": arab_el_raml,
+                "sort_order": 1,
+                "is_active": True,
+            },
+        )
+
+        banner_aghour, _ = Banner.objects.get_or_create(
+            title="مقاضيك للبيت أسرع مع سوبر ماركت التعاون",
+            defaults={
+                "target_type": Banner.TargetType.BUSINESS,
+                "target_id": biz_aghour_market.id,
+                "location": aghour,
+                "sort_order": 1,
+                "is_active": True,
+            },
+        )
+
         offer_koshary, _ = Offer.objects.get_or_create(
             business=biz_koshary,
             title="خصم 15% على جميع الوجبات العائلية",
