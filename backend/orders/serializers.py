@@ -19,7 +19,16 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from businesses.models import Product, ProductVariant
-from orders.models import Cart, CartItem, DeliveryAddress, Order, OrderItem, SubOrder
+from orders.models import (
+    AnythingRequest,
+    AnythingRequestImage,
+    Cart,
+    CartItem,
+    DeliveryAddress,
+    Order,
+    OrderItem,
+    SubOrder,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -329,3 +338,125 @@ class OrderListSerializer(serializers.ModelSerializer):
 
     def get_business_count(self, obj: Order) -> int:
         return obj.sub_orders.count()
+
+
+# ---------------------------------------------------------------------------
+# AnythingRequest
+# ---------------------------------------------------------------------------
+
+class AnythingRequestImageSerializer(serializers.ModelSerializer):
+    """Read-only representation of a single attached image."""
+
+    class Meta:
+        model = AnythingRequestImage
+        fields = ["id", "image"]
+
+
+class AnythingRequestWriteSerializer(serializers.ModelSerializer):
+    """
+    Write serializer used when the customer creates a new AnythingRequest.
+
+    - ``request_text``         — required text description.
+    - ``delivery_address_id``  — must be one of the authenticated user's saved addresses.
+    - ``images``               — optional list of image files (multipart/form-data).
+
+    The customer-facing fields ``status`` and ``admin_note`` are set by the
+    system / staff only and are NOT accepted via this serializer.
+    """
+
+    delivery_address_id = serializers.PrimaryKeyRelatedField(
+        queryset=DeliveryAddress.objects.all(),
+        source="delivery_address",
+        help_text="PK of one of your saved delivery addresses.",
+    )
+    images = serializers.ListField(
+        child=serializers.ImageField(max_length=None, allow_empty_file=False),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+        help_text="Optional image uploads (multipart/form-data).",
+    )
+
+    class Meta:
+        model = AnythingRequest
+        fields = ["delivery_address_id", "request_text", "images"]
+
+    def validate_delivery_address_id(self, value):
+        """Ensure the address belongs to the requesting customer."""
+        user = self.context["request"].user
+        if value.user_id != user.pk:
+            raise serializers.ValidationError(
+                "Delivery address not found or does not belong to you."
+            )
+        return value
+
+    def create(self, validated_data):
+        images_data = validated_data.pop("images", [])
+        anything_request = AnythingRequest.objects.create(**validated_data)
+        for image_file in images_data:
+            AnythingRequestImage.objects.create(
+                anything_request=anything_request, image=image_file
+            )
+        return anything_request
+
+
+class AnythingRequestSerializer(serializers.ModelSerializer):
+    """
+    Read serializer for a customer's AnythingRequest.
+
+    Returns full request details including attached images and the
+    human-readable status label. ``admin_note`` is intentionally
+    exposed so customers can read any quote/comment the admin adds.
+    """
+
+    images = AnythingRequestImageSerializer(many=True, read_only=True)
+    delivery_address = DeliveryAddressSerializer(read_only=True)
+    status_display = serializers.CharField(
+        source="get_status_display", read_only=True
+    )
+
+    class Meta:
+        model = AnythingRequest
+        fields = [
+            "id",
+            "status",
+            "status_display",
+            "request_text",
+            "delivery_address",
+            "admin_note",
+            "images",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class AnythingRequestListSerializer(serializers.ModelSerializer):
+    """
+    Lightweight list serializer — excludes images for fast listing.
+    Clients fetch the full detail view for images.
+    """
+
+    status_display = serializers.CharField(
+        source="get_status_display", read_only=True
+    )
+    address_label = serializers.CharField(
+        source="delivery_address.get_label_display", read_only=True
+    )
+    image_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AnythingRequest
+        fields = [
+            "id",
+            "status",
+            "status_display",
+            "request_text",
+            "address_label",
+            "image_count",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_image_count(self, obj: AnythingRequest) -> int:
+        return obj.images.count()
