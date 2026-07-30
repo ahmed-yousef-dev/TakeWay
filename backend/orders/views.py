@@ -5,12 +5,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from orders.models import Cart, CartItem, DeliveryAddress
+from orders.models import Cart, CartItem, DeliveryAddress, Order
 from orders.serializers import (
     CartItemWriteSerializer,
     CartSerializer,
     CheckoutSerializer,
     DeliveryAddressSerializer,
+    OrderListSerializer,
     OrderSerializer,
 )
 from orders.services import CheckoutError, checkout as checkout_service
@@ -208,3 +209,83 @@ class CheckoutView(APIView):
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+
+
+# ---------------------------------------------------------------------------
+# Customer Order History & Detail
+# ---------------------------------------------------------------------------
+
+class OrderViewSet(viewsets.GenericViewSet):
+    """
+    /api/v1/orders/
+
+    Read-only order history and detail for the authenticated customer.
+    The only mutation allowed is cancellation (status=pending only).
+
+    Endpoints:
+      GET    /orders/         — Paginated list of the customer's orders (newest first)
+      GET    /orders/{id}/    — Full order detail with all sub-orders and item snapshots
+      POST   /orders/{id}/cancel/  — Cancel a pending order
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Customers can only see their own, non-deleted orders.
+        Uses select_related / prefetch_related to minimise query count.
+        """
+        return (
+            Order.objects.filter(customer=self.request.user, is_active=True)
+            .select_related("delivery_address")
+            .prefetch_related("sub_orders__items", "sub_orders__business")
+            .order_by("-created_at")
+        )
+
+    def get_serializer_class(self):
+        """Use the lightweight list serializer for list, full detail for retrieve."""
+        if self.action == "list":
+            return OrderListSerializer
+        return OrderSerializer
+
+    # GET /orders/
+    def list(self, request):
+        """Paginated order history, most recent first."""
+        queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    # GET /orders/{id}/
+    def retrieve(self, request, pk=None):
+        """Full order detail including all sub-orders and item snapshots."""
+        order = self.get_object()
+        return Response(self.get_serializer(order).data)
+
+    # POST /orders/{id}/cancel/
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        """
+        Cancel a pending order.
+
+        Only orders in status=pending may be cancelled by the customer.
+        Any other status returns 400 with a clear error message.
+        """
+        order = self.get_object()
+
+        if order.status != Order.Status.PENDING:
+            return Response(
+                {
+                    "detail": (
+                        "Only pending orders can be cancelled. "
+                        f"This order is currently '{order.get_status_display()}'."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        order.status = Order.Status.CANCELLED
+        order.save(update_fields=["status"])
+        return Response(OrderSerializer(order).data)
