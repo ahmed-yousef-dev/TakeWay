@@ -637,6 +637,40 @@ class Command(BaseCommand):
         )
         offer_koshary.products.add(p_koshary_family)
 
+        offer_pizza, _ = Offer.objects.get_or_create(
+            business=biz_pizza,
+            title="خصم 20% على البيتزا الكبيرة",
+            defaults={
+                "description": "احصل على خصم 20% على البيتزا الكبيرة من بيتزا ماستر",
+                "discount_type": Offer.DiscountType.PERCENTAGE,
+                "discount_value": Decimal("20.00"),
+                "is_active": True,
+            },
+        )
+        offer_pizza.products.add(p_pizza_marg)
+
+        offer_baraka, _ = Offer.objects.get_or_create(
+            business=biz_baraka,
+            title="تخفيض 30 جنيه على المشويات",
+            defaults={
+                "description": "خصم ثابت 30 جنيه على كيلو الكفتة",
+                "discount_type": Offer.DiscountType.FIXED,
+                "discount_value": Decimal("30.00"),
+                "is_active": True,
+            },
+        )
+        
+        offer_aghour, _ = Offer.objects.get_or_create(
+            business=biz_aghour_market,
+            title="عروض السوبر ماركت",
+            defaults={
+                "description": "خصم 10% على الشاي والأرز",
+                "discount_type": Offer.DiscountType.PERCENTAGE,
+                "discount_value": Decimal("10.00"),
+                "is_active": True,
+            },
+        )
+
         self.stdout.write(self.style.SUCCESS("[OK] Banners & Offers created"))
 
         # ----------------------------------------------------------------------
