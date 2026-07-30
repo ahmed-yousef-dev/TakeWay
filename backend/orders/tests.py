@@ -913,3 +913,316 @@ class TestAnythingRequestAPI:
         response = self.client.post(self._cancel_url(other_req))
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
+
+# ---------------------------------------------------------------------------
+# Step 9: Focused Verification Tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestSnapshotImmutability:
+    """
+    Verify that changing the catalog (price/name) after checkout does NOT
+    alter existing OrderItem snapshots.
+    """
+
+    def test_price_change_does_not_affect_existing_snapshot(self):
+        """Updating a product's selling_price must not change the snapshot's unit_price."""
+        user, _ = _make_user_with_location()
+        address = DeliveryAddress.objects.create(user=user, address_details="Home")
+        product = ProductFactory(name="Kushari", selling_price=Decimal("15.00"))
+        cart = Cart.objects.create(user=user)
+        CartItem.objects.create(cart=cart, product=product, quantity=2)
+
+        order = checkout_service(user=user, delivery_address_id=address.pk)
+        snapshot = OrderItem.objects.get(sub_order__order=order)
+
+        # Change the price in the catalog
+        product.selling_price = Decimal("99.99")
+        product.save()
+
+        snapshot.refresh_from_db()
+        assert snapshot.unit_price == Decimal("15.00"), (
+            "Snapshot unit_price must be frozen at checkout time."
+        )
+        assert snapshot.total_price == Decimal("30.00")
+
+    def test_name_change_does_not_affect_existing_snapshot(self):
+        """Renaming a product must not change the snapshot's product_name."""
+        user, _ = _make_user_with_location()
+        address = DeliveryAddress.objects.create(user=user, address_details="Home")
+        product = ProductFactory(name="Original Name", selling_price=Decimal("10.00"))
+        cart = Cart.objects.create(user=user)
+        CartItem.objects.create(cart=cart, product=product, quantity=1)
+
+        order = checkout_service(user=user, delivery_address_id=address.pk)
+        snapshot = OrderItem.objects.get(sub_order__order=order)
+
+        product.name = "Completely Different Name"
+        product.save()
+
+        snapshot.refresh_from_db()
+        assert snapshot.product_name == "Original Name"
+
+    def test_variant_price_change_does_not_affect_snapshot(self):
+        """Variant price changes must not bleed into existing snapshots."""
+        user, _ = _make_user_with_location()
+        address = DeliveryAddress.objects.create(user=user, address_details="Home")
+        product = ProductFactory(selling_price=Decimal("10.00"))
+        variant = ProductVariantFactory(product=product, selling_price=Decimal("20.00"))
+        cart = Cart.objects.create(user=user)
+        CartItem.objects.create(cart=cart, product=product, variant=variant, quantity=3)
+
+        order = checkout_service(user=user, delivery_address_id=address.pk)
+        snapshot = OrderItem.objects.get(sub_order__order=order)
+
+        variant.selling_price = Decimal("999.00")
+        variant.save()
+
+        snapshot.refresh_from_db()
+        assert snapshot.unit_price == Decimal("20.00")
+        assert snapshot.total_price == Decimal("60.00")
+
+
+@pytest.mark.django_db
+class TestCartMath:
+    """
+    Focused tests for cart totals — per-business subtotals and multi-variant scenarios.
+    """
+
+    def setup_method(self):
+        self.client = APIClient()
+        self.user = UserFactory()
+        self.client.force_authenticate(self.user)
+        self.cart = Cart.objects.create(user=self.user)
+
+    def test_per_business_subtotal_in_grouped_response(self):
+        """Each business group in the cart response must carry the correct subtotal."""
+        from businesses.tests.factories import BusinessFactory
+
+        biz = BusinessFactory()
+        p1 = ProductFactory(business=biz, selling_price=Decimal("10.00"))
+        p2 = ProductFactory(business=biz, selling_price=Decimal("5.00"))
+        CartItem.objects.create(cart=self.cart, product=p1, quantity=2)  # 20
+        CartItem.objects.create(cart=self.cart, product=p2, quantity=4)  # 20
+
+        response = self.client.get(reverse("v1:cart"))
+        assert response.status_code == 200
+
+        groups = response.data["groups"]
+        biz_group = next(g for g in groups if g["business_id"] == biz.pk)
+        assert Decimal(biz_group["subtotal"]) == Decimal("40.00")
+
+    def test_grand_total_across_multiple_businesses(self):
+        """Grand total must sum items from all businesses correctly."""
+        p1 = ProductFactory(selling_price=Decimal("10.00"))
+        p2 = ProductFactory(selling_price=Decimal("25.00"))  # different business
+        CartItem.objects.create(cart=self.cart, product=p1, quantity=3)  # 30
+        CartItem.objects.create(cart=self.cart, product=p2, quantity=2)  # 50
+
+        response = self.client.get(reverse("v1:cart"))
+        assert Decimal(response.data["grand_total"]) == Decimal("80.00")
+
+    def test_item_count_reflects_line_items_not_quantity(self):
+        """item_count must be the total number of line items, not total quantity."""
+        p1 = ProductFactory()
+        p2 = ProductFactory()
+        CartItem.objects.create(cart=self.cart, product=p1, quantity=5)
+        CartItem.objects.create(cart=self.cart, product=p2, quantity=10)
+
+        response = self.client.get(reverse("v1:cart"))
+        assert response.data["item_count"] == 2
+
+    def test_mixed_base_and_variant_items_grand_total(self):
+        """Cart with both base-product items and variant items must compute correctly."""
+        product = ProductFactory(selling_price=Decimal("10.00"))
+        variant = ProductVariantFactory(product=product, selling_price=Decimal("18.00"))
+        other = ProductFactory(selling_price=Decimal("7.00"))
+
+        CartItem.objects.create(cart=self.cart, product=product, variant=variant, quantity=2)  # 36
+        CartItem.objects.create(cart=self.cart, product=other, quantity=3)  # 21
+
+        response = self.client.get(reverse("v1:cart"))
+        assert Decimal(response.data["grand_total"]) == Decimal("57.00")
+
+    def test_note_is_preserved_when_quantity_is_accumulated(self):
+        """When adding a duplicate item, the new note should overwrite the old one."""
+        product = ProductFactory(selling_price=Decimal("10.00"))
+        add_url = reverse("v1:cart-item-list")
+
+        self.client.post(add_url, {"product_id": product.pk, "quantity": 1, "note": "no salt"})
+        self.client.post(add_url, {"product_id": product.pk, "quantity": 2, "note": "extra hot"})
+
+        item = CartItem.objects.get(product=product)
+        assert item.quantity == 3
+        assert item.note == "extra hot"
+
+
+@pytest.mark.django_db
+class TestDeliveryAddressCRUD:
+    """
+    Focused address CRUD coverage: delete, label choices, isolation,
+    unauthenticated access, and GPS optional field handling.
+    """
+
+    def setup_method(self):
+        self.client = APIClient()
+        self.user = UserFactory()
+        self.client.force_authenticate(self.user)
+        self.list_url = reverse("v1:address-list")
+
+    def test_delete_address(self):
+        """Customer can delete their own address."""
+        address = DeliveryAddress.objects.create(
+            user=self.user, address_details="To be deleted"
+        )
+        url = reverse("v1:address-detail", args=[address.pk])
+        response = self.client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not DeliveryAddress.objects.filter(pk=address.pk).exists()
+
+    def test_cannot_delete_another_users_address(self):
+        """Attempting to delete another user's address must return 404."""
+        other = UserFactory()
+        other_address = DeliveryAddress.objects.create(
+            user=other, address_details="Not yours"
+        )
+        url = reverse("v1:address-detail", args=[other_address.pk])
+        response = self.client.delete(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_all_label_choices_are_accepted(self):
+        """All three label choices (home, work, other) must be accepted by the API."""
+        for label in ("home", "work", "other"):
+            response = self.client.post(
+                self.list_url,
+                {"label": label, "address_details": f"Test {label}"},
+            )
+            assert response.status_code == status.HTTP_201_CREATED, f"Label '{label}' rejected"
+
+    def test_invalid_label_is_rejected(self):
+        """An unrecognised label must return 400."""
+        response = self.client.post(
+            self.list_url,
+            {"label": "spaceship", "address_details": "Moon base"},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_unauthenticated_cannot_create_address(self):
+        anon = APIClient()
+        response = anon.post(
+            self.list_url,
+            {"label": "home", "address_details": "Anonymous home"},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_address_with_gps_coordinates(self):
+        """Addresses can be created with optional GPS coordinates."""
+        payload = {
+            "label": "work",
+            "address_details": "Office building",
+            "latitude": "30.044420",
+            "longitude": "31.235712",
+        }
+        response = self.client.post(self.list_url, payload)
+        assert response.status_code == status.HTTP_201_CREATED
+        address = DeliveryAddress.objects.get(user=self.user, label="work")
+        assert address.latitude is not None
+        assert address.longitude is not None
+
+    def test_address_without_gps_is_valid(self):
+        """GPS coordinates are optional; omitting them must not fail."""
+        response = self.client.post(
+            self.list_url,
+            {"label": "home", "address_details": "Village square"},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        address = DeliveryAddress.objects.get(user=self.user)
+        assert address.latitude is None
+        assert address.longitude is None
+
+
+@pytest.mark.django_db
+class TestCheckoutAtomicity:
+    """
+    Verify that a failed checkout leaves no partial Order / SubOrder records.
+    """
+
+    def test_no_order_created_when_checkout_fails_min_order(self):
+        """A CheckoutError must roll back the entire transaction."""
+        user, _ = _make_user_with_location(minimum_order_amount="200.00")
+        _add_product_to_cart(user, price="10.00", quantity=1)  # total=10, below minimum
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+
+        with pytest.raises(CheckoutError):
+            checkout_service(user=user, delivery_address_id=address.pk)
+
+        assert Order.objects.filter(customer=user).count() == 0
+        assert SubOrder.objects.count() == 0
+        assert OrderItem.objects.count() == 0
+
+    def test_cart_is_not_cleared_when_checkout_fails(self):
+        """Cart items must survive a failed checkout so the customer can retry."""
+        user, _ = _make_user_with_location(minimum_order_amount="500.00")
+        cart, _, _ = _add_product_to_cart(user, price="10.00", quantity=1)
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+
+        with pytest.raises(CheckoutError):
+            checkout_service(user=user, delivery_address_id=address.pk)
+
+        assert cart.items.count() == 1
+
+
+@pytest.mark.django_db
+class TestMultiBusinessGrouping:
+    """
+    Focused tests for multi-business grouping during checkout.
+    Ensures each business gets exactly one SubOrder with the correct items and subtotals.
+    """
+
+    def test_each_business_gets_exactly_one_suborder(self):
+        """Three products from two businesses must produce exactly two SubOrders."""
+        from businesses.tests.factories import BusinessFactory
+
+        user, _ = _make_user_with_location()
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+
+        biz_a = BusinessFactory()
+        biz_b = BusinessFactory()
+        pa1 = ProductFactory(business=biz_a, selling_price=Decimal("10.00"))
+        pa2 = ProductFactory(business=biz_a, selling_price=Decimal("5.00"))
+        pb1 = ProductFactory(business=biz_b, selling_price=Decimal("20.00"))
+
+        cart = Cart.objects.create(user=user)
+        CartItem.objects.create(cart=cart, product=pa1, quantity=1)
+        CartItem.objects.create(cart=cart, product=pa2, quantity=2)
+        CartItem.objects.create(cart=cart, product=pb1, quantity=1)
+
+        order = checkout_service(user=user, delivery_address_id=address.pk)
+
+        assert order.sub_orders.count() == 2
+
+        so_a = order.sub_orders.get(business=biz_a)
+        so_b = order.sub_orders.get(business=biz_b)
+
+        assert so_a.items.count() == 2
+        assert so_b.items.count() == 1
+        assert so_a.subtotal == Decimal("20.00")   # 10*1 + 5*2
+        assert so_b.subtotal == Decimal("20.00")   # 20*1
+        assert order.subtotal == Decimal("40.00")
+
+    def test_suborder_subtotals_sum_to_order_subtotal(self):
+        """Sum of all SubOrder subtotals must exactly equal the parent Order subtotal."""
+        user, _ = _make_user_with_location()
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+
+        cart = Cart.objects.create(user=user)
+        for price in ("12.50", "7.00", "30.00"):
+            product = ProductFactory(selling_price=Decimal(price))
+            CartItem.objects.create(cart=cart, product=product, quantity=2)
+
+        order = checkout_service(user=user, delivery_address_id=address.pk)
+
+        sub_total_sum = sum(so.subtotal for so in order.sub_orders.all())
+        assert sub_total_sum == order.subtotal
+
+
