@@ -29,6 +29,17 @@ from businesses.models import (
     ProductVariant,
 )
 from promotions.models import Banner, Offer
+from orders.models import (
+    DeliveryAddress,
+    Cart,
+    CartItem,
+    Order,
+    SubOrder,
+    OrderItem,
+    AnythingRequest,
+)
+from common.models import Review, Favorite
+from django.contrib.contenttypes.models import ContentType
 
 
 class Command(BaseCommand):
@@ -54,6 +65,15 @@ class Command(BaseCommand):
 
         if clear or reset:
             self.stdout.write(self.style.WARNING("Clearing existing Phase 1 data..."))
+            Review.objects.all().delete()
+            Favorite.objects.all().delete()
+            AnythingRequest.objects.all().delete()
+            OrderItem.objects.all().delete()
+            SubOrder.objects.all().delete()
+            Order.objects.all().delete()
+            CartItem.objects.all().delete()
+            Cart.objects.all().delete()
+            DeliveryAddress.objects.all().delete()
             Banner.objects.all().delete()
             Offer.objects.all().delete()
             ProductVariant.objects.all().delete()
@@ -618,6 +638,122 @@ class Command(BaseCommand):
         offer_koshary.products.add(p_koshary_family)
 
         self.stdout.write(self.style.SUCCESS("[OK] Banners & Offers created"))
+
+        # ----------------------------------------------------------------------
+        # 6. Delivery Addresses, Orders, Cart, Anything Requests, Reviews & Favorites
+        # ----------------------------------------------------------------------
+        # Delivery Addresses
+        addr_banha_home, _ = DeliveryAddress.objects.get_or_create(
+            user=customer_banha,
+            label=DeliveryAddress.Label.HOME,
+            defaults={
+                "address_details": "شارع الجيش، عمارة الأمل، شقة 4، بنها",
+                "latitude": Decimal("30.466700"),
+                "longitude": Decimal("31.183300"),
+            },
+        )
+        addr_banha_work, _ = DeliveryAddress.objects.get_or_create(
+            user=customer_banha,
+            label=DeliveryAddress.Label.WORK,
+            defaults={
+                "address_details": "برج السلام، شقة 12، بنها",
+                "latitude": Decimal("30.468000"),
+                "longitude": Decimal("31.185000"),
+            },
+        )
+        addr_raml_home, _ = DeliveryAddress.objects.get_or_create(
+            user=customer_raml,
+            label=DeliveryAddress.Label.HOME,
+            defaults={
+                "address_details": "الشارع الرئيسي، بجوار المسجد الكبير، عرب الرمل",
+            },
+        )
+
+        # Completed Order (for customer_banha from biz_koshary — enables Review eligibility!)
+        order_delivered, _ = Order.objects.get_or_create(
+            customer=customer_banha,
+            delivery_address=addr_banha_home,
+            status=Order.Status.DELIVERED,
+            defaults={
+                "subtotal": Decimal("80.00"),
+                "delivery_fee": Decimal("15.00"),
+                "total_amount": Decimal("95.00"),
+            },
+        )
+        suborder_koshary, _ = SubOrder.objects.get_or_create(
+            order=order_delivered,
+            business=biz_koshary,
+            defaults={"subtotal": Decimal("80.00")},
+        )
+        OrderItem.objects.get_or_create(
+            sub_order=suborder_koshary,
+            product=p_koshary_super,
+            defaults={
+                "product_name": p_koshary_super.name,
+                "unit_price": Decimal("30.00"),
+                "quantity": 2,
+                "total_price": Decimal("60.00"),
+                "note": "بدون بصل",
+            },
+        )
+        OrderItem.objects.get_or_create(
+            sub_order=suborder_koshary,
+            product=p_koshary_family,
+            defaults={
+                "product_name": p_koshary_family.name,
+                "variant_name": "حجم وسط",
+                "unit_price": Decimal("20.00"),
+                "quantity": 1,
+                "total_price": Decimal("20.00"),
+            },
+        )
+
+        # Active Cart & CartItems for customer_banha
+        cart_banha, _ = Cart.objects.get_or_create(user=customer_banha)
+        CartItem.objects.get_or_create(
+            cart=cart_banha,
+            product=p_koshary_super,
+            defaults={
+                "quantity": 2,
+                "note": "زيادة شطة ودقة خارجياً",
+            },
+        )
+
+        # AnythingRequest
+        AnythingRequest.objects.get_or_create(
+            customer=customer_banha,
+            defaults={
+                "delivery_address": addr_banha_home,
+                "request_text": "محتاج شاحن لابتوب ديل 65 واط وعلبة دواء بانادول من الصيدلية القريبة",
+                "status": AnythingRequest.Status.PENDING,
+            },
+        )
+
+        # Reviews & Favorites (using Generic ContentType FK)
+        ct_business = ContentType.objects.get_for_model(Business)
+
+        Review.objects.get_or_create(
+            user=customer_banha,
+            content_type=ct_business,
+            object_id=biz_koshary.id,
+            defaults={
+                "rating": 5,
+                "comment": "أفضل كشري في بنها بلا منازع، والتوصيل كان سريع جداً!",
+            },
+        )
+
+        Favorite.objects.get_or_create(
+            user=customer_banha,
+            content_type=ct_business,
+            object_id=biz_koshary.id,
+        )
+        Favorite.objects.get_or_create(
+            user=customer_banha,
+            content_type=ct_business,
+            object_id=biz_basha.id,
+        )
+
+        self.stdout.write(self.style.SUCCESS("[OK] Delivery Addresses, Orders, Cart, Anything Requests, Reviews & Favorites created"))
 
         self.stdout.write(
             self.style.SUCCESS(
