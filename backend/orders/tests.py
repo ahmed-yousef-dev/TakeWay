@@ -7,6 +7,7 @@ from rest_framework import status
 from accounts.tests.factories import UserFactory
 from businesses.tests.factories import ProductFactory, ProductVariantFactory
 from orders.models import Cart, CartItem, Order, SubOrder, OrderItem, DeliveryAddress
+from orders.services import CheckoutError, checkout as checkout_service
 from locations.tests.factories import LocationFactory
 
 
@@ -330,3 +331,193 @@ class TestCartItemRemove:
         assert response.status_code == status.HTTP_200_OK
         assert self.cart.items.count() == 0
         assert response.data["item_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Step 5: Checkout Service Layer tests
+# ---------------------------------------------------------------------------
+
+def _make_user_with_location(delivery_fee="15.00", minimum_order_amount="0.00"):
+    """Helper: creates a User with an attached Location."""
+    location = LocationFactory(
+        delivery_fee=delivery_fee,
+        minimum_order_amount=minimum_order_amount,
+    )
+    user = UserFactory(location=location)
+    return user, location
+
+
+def _add_product_to_cart(user, price="50.00", quantity=1):
+    """Helper: add one product to user's cart and return (cart, item, product)."""
+    product = ProductFactory(selling_price=Decimal(price))
+    cart, _ = Cart.objects.get_or_create(user=user)
+    item = CartItem.objects.create(cart=cart, product=product, quantity=quantity)
+    return cart, item, product
+
+
+@pytest.mark.django_db
+class TestCheckoutService:
+    """Direct unit tests of the checkout() service function."""
+
+    def test_checkout_creates_order_with_correct_totals(self):
+        """Happy path: checkout produces an Order with snapshotted totals."""
+        user, location = _make_user_with_location(delivery_fee="15.00", minimum_order_amount="0.00")
+        _, _, product = _add_product_to_cart(user, price="40.00", quantity=2)
+        address = DeliveryAddress.objects.create(user=user, address_details="123 Main")
+
+        order = checkout_service(user=user, delivery_address_id=address.pk)
+
+        assert order.pk is not None
+        assert order.status == Order.Status.PENDING
+        assert order.subtotal == Decimal("80.00")
+        assert order.delivery_fee == Decimal("15.00")
+        assert order.total_amount == Decimal("95.00")
+        assert order.customer == user
+        assert order.delivery_address == address
+
+    def test_checkout_clears_cart_after_success(self):
+        """Cart must be empty after a successful checkout."""
+        user, _ = _make_user_with_location()
+        cart, _, _ = _add_product_to_cart(user)
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+
+        checkout_service(user=user, delivery_address_id=address.pk)
+
+        assert cart.items.count() == 0
+
+    def test_checkout_splits_items_by_business(self):
+        """Items from N businesses must produce N SubOrders."""
+        user, _ = _make_user_with_location()
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+
+        cart = Cart.objects.create(user=user)
+        # Two products from DIFFERENT businesses
+        product_a = ProductFactory(selling_price=Decimal("20.00"))
+        product_b = ProductFactory(selling_price=Decimal("30.00"))
+        CartItem.objects.create(cart=cart, product=product_a, quantity=1)
+        CartItem.objects.create(cart=cart, product=product_b, quantity=1)
+
+        order = checkout_service(user=user, delivery_address_id=address.pk)
+
+        assert order.sub_orders.count() == 2
+        assert order.subtotal == Decimal("50.00")
+
+    def test_checkout_creates_order_item_snapshots(self):
+        """OrderItem snapshots must capture product name and price at checkout time."""
+        user, _ = _make_user_with_location()
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+        product = ProductFactory(name="Falafel Sandwich", selling_price=Decimal("12.50"))
+        cart = Cart.objects.create(user=user)
+        CartItem.objects.create(cart=cart, product=product, quantity=3)
+
+        order = checkout_service(user=user, delivery_address_id=address.pk)
+
+        snapshot = OrderItem.objects.get(sub_order__order=order)
+        assert snapshot.product_name == "Falafel Sandwich"
+        assert snapshot.unit_price == Decimal("12.50")
+        assert snapshot.quantity == 3
+        assert snapshot.total_price == Decimal("37.50")
+
+    def test_checkout_raises_on_empty_cart(self):
+        """Empty cart must raise CheckoutError."""
+        user, _ = _make_user_with_location()
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+
+        with pytest.raises(CheckoutError, match="empty"):
+            checkout_service(user=user, delivery_address_id=address.pk)
+
+    def test_checkout_raises_below_minimum_order(self):
+        """Cart total below location minimum must raise CheckoutError."""
+        user, _ = _make_user_with_location(minimum_order_amount="100.00")
+        _add_product_to_cart(user, price="20.00", quantity=1)
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+
+        with pytest.raises(CheckoutError, match="Minimum order"):
+            checkout_service(user=user, delivery_address_id=address.pk)
+
+    def test_checkout_raises_when_address_not_owned(self):
+        """Address belonging to another user must raise CheckoutError."""
+        user, _ = _make_user_with_location()
+        other_user = UserFactory()
+        _add_product_to_cart(user, price="50.00")
+        other_address = DeliveryAddress.objects.create(user=other_user, address_details="Other")
+
+        with pytest.raises(CheckoutError, match="not found"):
+            checkout_service(user=user, delivery_address_id=other_address.pk)
+
+    def test_checkout_raises_when_user_has_no_location(self):
+        """User without a location set must raise CheckoutError."""
+        user = UserFactory(location=None)
+        _add_product_to_cart(user, price="50.00")
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+
+        with pytest.raises(CheckoutError, match="no location"):
+            checkout_service(user=user, delivery_address_id=address.pk)
+
+    def test_checkout_uses_variant_price_for_snapshot(self):
+        """Variant price, not base product price, must be used in the snapshot."""
+        user, _ = _make_user_with_location()
+        address = DeliveryAddress.objects.create(user=user, address_details="Addr")
+        product = ProductFactory(selling_price=Decimal("10.00"))
+        variant = ProductVariantFactory(product=product, selling_price=Decimal("25.00"))
+        cart = Cart.objects.create(user=user)
+        CartItem.objects.create(cart=cart, product=product, variant=variant, quantity=2)
+
+        order = checkout_service(user=user, delivery_address_id=address.pk)
+
+        snapshot = OrderItem.objects.get(sub_order__order=order)
+        assert snapshot.unit_price == Decimal("25.00")
+        assert snapshot.total_price == Decimal("50.00")
+        assert order.subtotal == Decimal("50.00")
+
+
+@pytest.mark.django_db
+class TestCheckoutAPI:
+    """Integration tests for POST /api/v1/checkout/."""
+
+    def setup_method(self):
+        self.client = APIClient()
+        location = LocationFactory(delivery_fee="10.00", minimum_order_amount="0.00")
+        self.user = UserFactory(location=location)
+        self.client.force_authenticate(user=self.user)
+        self.url = reverse("v1:checkout")
+
+    def _setup_cart_and_address(self, price="30.00", quantity=1):
+        product = ProductFactory(selling_price=Decimal(price))
+        cart = Cart.objects.create(user=self.user)
+        CartItem.objects.create(cart=cart, product=product, quantity=quantity)
+        address = DeliveryAddress.objects.create(user=self.user, address_details="My Home")
+        return address
+
+    def test_successful_checkout_returns_201_with_order(self):
+        """Happy path via the API should return 201 with a full order payload."""
+        address = self._setup_cart_and_address(price="50.00")
+        response = self.client.post(self.url, {"delivery_address_id": address.pk})
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert "id" in response.data
+        assert response.data["status"] == Order.Status.PENDING
+        assert Decimal(response.data["delivery_fee"]) == Decimal("10.00")
+        assert len(response.data["sub_orders"]) == 1
+
+    def test_empty_cart_returns_400(self):
+        address = DeliveryAddress.objects.create(user=self.user, address_details="Home")
+        response = self.client.post(self.url, {"delivery_address_id": address.pk})
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "empty" in response.data["detail"].lower()
+
+    def test_wrong_address_returns_400(self):
+        other_user = UserFactory()
+        other_address = DeliveryAddress.objects.create(user=other_user, address_details="X")
+        self._setup_cart_and_address()
+        response = self.client.post(self.url, {"delivery_address_id": other_address.pk})
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_unauthenticated_returns_401(self):
+        anon = APIClient()
+        response = anon.post(self.url, {"delivery_address_id": 1})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_missing_address_id_returns_400(self):
+        response = self.client.post(self.url, {})
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
