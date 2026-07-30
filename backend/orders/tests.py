@@ -521,3 +521,170 @@ class TestCheckoutAPI:
     def test_missing_address_id_returns_400(self):
         response = self.client.post(self.url, {})
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+# ---------------------------------------------------------------------------
+# Step 6: Customer Order APIs tests
+# ---------------------------------------------------------------------------
+
+def _create_order_for_user(user, delivery_fee="10.00", minimum_order_amount="0.00"):
+    """
+    Helper: put one product in a cart, checkout, and return the Order.
+    The user must have a location set.
+    """
+    product = ProductFactory(selling_price=Decimal("50.00"))
+    cart, _ = Cart.objects.get_or_create(user=user)
+    CartItem.objects.create(cart=cart, product=product, quantity=1)
+    address = DeliveryAddress.objects.create(user=user, address_details="Test Addr")
+    return checkout_service(user=user, delivery_address_id=address.pk)
+
+
+@pytest.mark.django_db
+class TestOrderListAPI:
+    """GET /api/v1/orders/ — paginated order history."""
+
+    def setup_method(self):
+        self.client = APIClient()
+        location = LocationFactory(delivery_fee="10.00", minimum_order_amount="0.00")
+        self.user = UserFactory(location=location)
+        self.client.force_authenticate(user=self.user)
+        self.url = reverse("v1:order-list")
+
+    def test_empty_history_returns_empty_list(self):
+        response = self.client.get(self.url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 0
+
+    def test_returns_only_customers_own_orders(self):
+        """Orders from other users must never appear."""
+        # Create order for self
+        _create_order_for_user(self.user)
+
+        # Create order for another user (different user + location)
+        other_location = LocationFactory(delivery_fee="5.00", minimum_order_amount="0.00")
+        other_user = UserFactory(location=other_location)
+        _create_order_for_user(other_user)
+
+        response = self.client.get(self.url)
+        assert response.data["count"] == 1
+
+    def test_multiple_orders_are_returned_newest_first(self):
+        """Order history must be sorted newest-first."""
+        _create_order_for_user(self.user)
+        _create_order_for_user(self.user)
+
+        response = self.client.get(self.url)
+        assert response.data["count"] == 2
+        ids = [o["id"] for o in response.data["results"]]
+        assert ids == sorted(ids, reverse=True)
+
+    def test_list_response_includes_summary_fields(self):
+        """List items must include lightweight summary fields only (no sub_orders)."""
+        _create_order_for_user(self.user)
+        response = self.client.get(self.url)
+        item = response.data["results"][0]
+        assert "status" in item
+        assert "total_amount" in item
+        assert "business_count" in item
+        # Full sub_orders detail must NOT be in the list response
+        assert "sub_orders" not in item
+
+    def test_unauthenticated_request_is_rejected(self):
+        anon = APIClient()
+        response = anon.get(self.url)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+class TestOrderDetailAPI:
+    """GET /api/v1/orders/{id}/ — full order detail."""
+
+    def setup_method(self):
+        self.client = APIClient()
+        location = LocationFactory(delivery_fee="10.00", minimum_order_amount="0.00")
+        self.user = UserFactory(location=location)
+        self.client.force_authenticate(user=self.user)
+
+    def test_returns_full_order_with_sub_orders(self):
+        order = _create_order_for_user(self.user)
+        url = reverse("v1:order-detail", args=[order.pk])
+        response = self.client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == order.pk
+        assert "sub_orders" in response.data
+        assert len(response.data["sub_orders"]) == 1
+        # Items must be nested inside sub_orders
+        assert "items" in response.data["sub_orders"][0]
+
+    def test_cannot_view_another_users_order(self):
+        other_location = LocationFactory(delivery_fee="5.00", minimum_order_amount="0.00")
+        other_user = UserFactory(location=other_location)
+        other_order = _create_order_for_user(other_user)
+
+        url = reverse("v1:order-detail", args=[other_order.pk])
+        response = self.client.get(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_nonexistent_order_returns_404(self):
+        url = reverse("v1:order-detail", args=[99999])
+        response = self.client.get(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+class TestOrderCancelAPI:
+    """POST /api/v1/orders/{id}/cancel/ — cancellation rules."""
+
+    def setup_method(self):
+        self.client = APIClient()
+        location = LocationFactory(delivery_fee="10.00", minimum_order_amount="0.00")
+        self.user = UserFactory(location=location)
+        self.client.force_authenticate(user=self.user)
+
+    def _cancel_url(self, order):
+        return reverse("v1:order-cancel", args=[order.pk])
+
+    def test_cancel_pending_order_succeeds(self):
+        """A pending order must be cancellable by the customer."""
+        order = _create_order_for_user(self.user)
+        assert order.status == Order.Status.PENDING
+
+        response = self.client.post(self._cancel_url(order))
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["status"] == Order.Status.CANCELLED
+
+        order.refresh_from_db()
+        assert order.status == Order.Status.CANCELLED
+
+    def test_cancel_non_pending_order_returns_400(self):
+        """Orders that are no longer pending must be rejected."""
+        order = _create_order_for_user(self.user)
+        order.status = Order.Status.ACCEPTED
+        order.save()
+
+        response = self.client.post(self._cancel_url(order))
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "pending" in response.data["detail"].lower()
+
+    def test_cancel_delivered_order_returns_400(self):
+        order = _create_order_for_user(self.user)
+        order.status = Order.Status.DELIVERED
+        order.save()
+
+        response = self.client.post(self._cancel_url(order))
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_cannot_cancel_another_users_order(self):
+        other_location = LocationFactory(delivery_fee="5.00", minimum_order_amount="0.00")
+        other_user = UserFactory(location=other_location)
+        other_order = _create_order_for_user(other_user)
+
+        response = self.client.post(self._cancel_url(other_order))
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_unauthenticated_cancel_returns_401(self):
+        order = _create_order_for_user(self.user)
+        anon = APIClient()
+        response = anon.post(self._cancel_url(order))
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
