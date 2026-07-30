@@ -5,8 +5,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from orders.models import Cart, CartItem, DeliveryAddress, Order
+from orders.models import Cart, CartItem, DeliveryAddress, Order, AnythingRequest
 from orders.serializers import (
+    AnythingRequestListSerializer,
+    AnythingRequestSerializer,
+    AnythingRequestWriteSerializer,
     CartItemWriteSerializer,
     CartSerializer,
     CheckoutSerializer,
@@ -289,3 +292,106 @@ class OrderViewSet(viewsets.GenericViewSet):
         order.status = Order.Status.CANCELLED
         order.save(update_fields=["status"])
         return Response(OrderSerializer(order).data)
+
+
+# ---------------------------------------------------------------------------
+# AnythingRequest
+# ---------------------------------------------------------------------------
+
+class AnythingRequestViewSet(viewsets.GenericViewSet):
+    """
+    /api/v1/anything-requests/
+
+    Endpoints:
+      POST   /anything-requests/         — Submit a new request (text + optional images)
+      GET    /anything-requests/         — List all requests by the authenticated customer
+      GET    /anything-requests/{id}/    — Full request detail (with images and admin note)
+      POST   /anything-requests/{id}/cancel/  — Cancel a pending request
+
+    Image upload requires ``multipart/form-data``.
+    All status/admin fields are read-only from the customer perspective.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Return only the authenticated customer's active requests."""
+        return (
+            AnythingRequest.objects.filter(
+                customer=self.request.user, is_active=True
+            )
+            .select_related("delivery_address")
+            .prefetch_related("images")
+            .order_by("-created_at")
+        )
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return AnythingRequestWriteSerializer
+        if self.action == "list":
+            return AnythingRequestListSerializer
+        return AnythingRequestSerializer
+
+    # POST /anything-requests/
+    def create(self, request):
+        """
+        Submit a new AnythingRequest.
+
+        Accepts ``multipart/form-data`` so that images can be attached alongside
+        the text. Up to architecture-specified limits (5 MB per image).
+        """
+        serializer = AnythingRequestWriteSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        anything_request = serializer.save(customer=request.user)
+        return Response(
+            AnythingRequestSerializer(anything_request, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    # GET /anything-requests/
+    def list(self, request):
+        """Paginated list of the customer's requests (most recent first)."""
+        queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = AnythingRequestListSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = AnythingRequestListSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    # GET /anything-requests/{id}/
+    def retrieve(self, request, pk=None):
+        """Full request detail including images and admin note."""
+        instance = self.get_object()
+        return Response(
+            AnythingRequestSerializer(instance, context={"request": request}).data
+        )
+
+    # POST /anything-requests/{id}/cancel/
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        """
+        Cancel an AnythingRequest.
+
+        Only requests in ``pending`` status can be cancelled by the customer.
+        """
+        instance = self.get_object()
+
+        if instance.status != AnythingRequest.Status.PENDING:
+            return Response(
+                {
+                    "detail": (
+                        "Only pending requests can be cancelled. "
+                        f"This request is currently '{instance.get_status_display()}'."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        instance.is_active = False
+        instance.save(update_fields=["is_active"])
+        return Response(
+            AnythingRequestSerializer(instance, context={"request": request}).data
+        )
