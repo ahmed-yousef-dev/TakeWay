@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,8 +9,11 @@ from orders.models import Cart, CartItem, DeliveryAddress
 from orders.serializers import (
     CartItemWriteSerializer,
     CartSerializer,
+    CheckoutSerializer,
     DeliveryAddressSerializer,
+    OrderSerializer,
 )
+from orders.services import CheckoutError, checkout as checkout_service
 
 
 class DeliveryAddressViewSet(viewsets.ModelViewSet):
@@ -162,3 +166,45 @@ class CartItemViewSet(viewsets.GenericViewSet):
         cart, _ = Cart.objects.get_or_create(user=request.user)
         cart.items.all().delete()
         return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# Checkout
+# ---------------------------------------------------------------------------
+
+class CheckoutView(APIView):
+    """
+    POST /api/v1/checkout/
+
+    Convert the authenticated customer's cart into an Order.
+
+    Request body
+    ────────────
+    {
+        "delivery_address_id": <int>
+    }
+
+    Success response (201 Created)
+    ──────────────────────────────
+    Full OrderSerializer payload.
+
+    Error responses
+    ───────────────
+    400 — cart empty, min-order not met, address not found, no location set.
+    401 — unauthenticated.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = CheckoutSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            order = checkout_service(
+                user=request.user,
+                delivery_address_id=serializer.validated_data["delivery_address_id"],
+            )
+        except CheckoutError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)

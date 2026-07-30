@@ -7,6 +7,10 @@ Includes:
 - CartItemReadSerializer      — Read a single cart item (nested in cart response)
 - CartBusinessGroupSerializer — Reads items grouped by business with subtotal
 - CartSerializer              — Full cart response with per-business groups and grand total
+- CheckoutSerializer          — Input validation for the checkout endpoint
+- OrderItemSerializer         — Read representation of a snapshotted order item
+- SubOrderSerializer          — Read representation of a sub-order (per business)
+- OrderSerializer             — Full order response
 """
 
 from decimal import Decimal
@@ -14,7 +18,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from businesses.models import Product, ProductVariant
-from orders.models import Cart, CartItem, DeliveryAddress
+from orders.models import Cart, CartItem, DeliveryAddress, Order, OrderItem, SubOrder
 
 
 # ---------------------------------------------------------------------------
@@ -208,3 +212,82 @@ class CartSerializer(serializers.ModelSerializer):
 
     def get_item_count(self, cart: Cart) -> int:
         return cart.items.count()
+
+
+# ---------------------------------------------------------------------------
+# Checkout
+# ---------------------------------------------------------------------------
+
+class CheckoutSerializer(serializers.Serializer):
+    """
+    Input serializer for POST /api/v1/checkout/.
+
+    Validates that the delivery_address_id references one of the
+    authenticated user's saved addresses before the service layer runs.
+    """
+
+    delivery_address_id = serializers.IntegerField(
+        help_text="PK of the DeliveryAddress to deliver to."
+    )
+
+    def validate_delivery_address_id(self, value):
+        user = self.context["request"].user
+        if not DeliveryAddress.objects.filter(pk=value, user=user).exists():
+            raise serializers.ValidationError(
+                "Delivery address not found or does not belong to you."
+            )
+        return value
+
+
+# ---------------------------------------------------------------------------
+# Order — Read
+# ---------------------------------------------------------------------------
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    """Read-only snapshot of a purchased item."""
+
+    class Meta:
+        model = OrderItem
+        fields = [
+            "id",
+            "product_name",
+            "variant_name",
+            "unit_price",
+            "quantity",
+            "total_price",
+            "note",
+        ]
+
+
+class SubOrderSerializer(serializers.ModelSerializer):
+    """Read-only sub-order grouped by business."""
+
+    business_name = serializers.CharField(source="business.name")
+    items = OrderItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SubOrder
+        fields = ["id", "business_id", "business_name", "subtotal", "items"]
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    """Full read-only order response returned after successful checkout."""
+
+    sub_orders = SubOrderSerializer(many=True, read_only=True)
+    delivery_address = DeliveryAddressSerializer(read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "status",
+            "status_display",
+            "delivery_address",
+            "subtotal",
+            "delivery_fee",
+            "total_amount",
+            "sub_orders",
+            "created_at",
+        ]
+        read_only_fields = fields
