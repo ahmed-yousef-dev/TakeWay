@@ -16,6 +16,7 @@ api_v1_patterns = [
     path("auth/", include("accounts.urls")),
     path("locations/", include("locations.urls")),
     path("", include("businesses.urls")),
+    path("", include("orders.urls")),
     # API schema endpoints
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
