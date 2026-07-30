@@ -8,8 +8,9 @@ Target locations:
 - Arab El-Raml (Village, Menofia)
 
 Usage:
-  python manage.py seed_data
-  python manage.py seed_data --clear
+  python manage.py seed_data                     # Seed data if no data exists
+  python manage.py seed_data --clear             # Clear ONLY existing data (no seeding)
+  python manage.py seed_data --reset             # Clear existing data AND THEN seed new data
 """
 
 import datetime
@@ -27,6 +28,7 @@ from businesses.models import (
     Product,
     ProductVariant,
 )
+from promotions.models import Banner, Offer
 
 
 class Command(BaseCommand):
@@ -51,7 +53,9 @@ class Command(BaseCommand):
         reset = options.get("reset", False)
 
         if clear or reset:
-            self.stdout.write(self.style.WARNING("Clearing existing Phase 1A data..."))
+            self.stdout.write(self.style.WARNING("Clearing existing Phase 1 data..."))
+            Banner.objects.all().delete()
+            Offer.objects.all().delete()
             ProductVariant.objects.all().delete()
             Product.objects.all().delete()
             ProductCategory.objects.all().delete()
@@ -575,6 +579,45 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(self.style.SUCCESS("[OK] Businesses, Products, Variants & Working Hours created"))
+
+        # ----------------------------------------------------------------------
+        # 5. Banners & Offers (Promotions)
+        # ----------------------------------------------------------------------
+        banner_global, _ = Banner.objects.get_or_create(
+            title="خصومات تصل إلى 30% على مطاعم القرية",
+            defaults={
+                "target_type": Banner.TargetType.CATEGORY,
+                "target_id": cat_restaurants.id,
+                "location": None,  # Global fallback banner
+                "sort_order": 1,
+                "is_active": True,
+            },
+        )
+
+        banner_banha, _ = Banner.objects.get_or_create(
+            title="عرض خاص - التوصيل بـ 5 جنيه فقط في بنها",
+            defaults={
+                "target_type": Banner.TargetType.BUSINESS,
+                "target_id": biz_koshary.id,
+                "location": banha,
+                "sort_order": 1,
+                "is_active": True,
+            },
+        )
+
+        offer_koshary, _ = Offer.objects.get_or_create(
+            business=biz_koshary,
+            title="خصم 15% على جميع الوجبات العائلية",
+            defaults={
+                "description": "استمتع بخصم 15% على وجبات الكشري العائلية في بنها",
+                "discount_type": Offer.DiscountType.PERCENTAGE,
+                "discount_value": Decimal("15.00"),
+                "is_active": True,
+            },
+        )
+        offer_koshary.products.add(p_koshary_family)
+
+        self.stdout.write(self.style.SUCCESS("[OK] Banners & Offers created"))
 
         self.stdout.write(
             self.style.SUCCESS(
