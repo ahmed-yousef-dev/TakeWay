@@ -39,6 +39,9 @@ from orders.models import (
     AnythingRequest,
 )
 from common.models import Review, Favorite
+from technicians.models import TechnicianCategory, Technician, TechnicianRequest
+from rides.models import RideRequest
+from notifications.models import DeviceToken, Notification
 from django.contrib.contenttypes.models import ContentType
 
 
@@ -67,6 +70,12 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Clearing existing Phase 1 data..."))
             Review.objects.all().delete()
             Favorite.objects.all().delete()
+            Notification.objects.all().delete()
+            DeviceToken.objects.all().delete()
+            RideRequest.objects.all().delete()
+            TechnicianRequest.objects.all().delete()
+            Technician.objects.all().delete()
+            TechnicianCategory.objects.all().delete()
             AnythingRequest.objects.all().delete()
             OrderItem.objects.all().delete()
             SubOrder.objects.all().delete()
@@ -822,9 +831,96 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("[OK] Delivery Addresses, Orders, Cart, Anything Requests, Reviews & Favorites created"))
 
+        # ----------------------------------------------------------------------
+        # 7. Phase 1C: Technicians, Rides, Notifications
+        # ----------------------------------------------------------------------
+        
+        # Technician Categories
+        tech_cat_plumbing, _ = TechnicianCategory.objects.get_or_create(
+            name="سباكة", defaults={"sort_order": 1, "icon": ""}
+        )
+        tech_cat_electrical, _ = TechnicianCategory.objects.get_or_create(
+            name="كهرباء", defaults={"sort_order": 2, "icon": ""}
+        )
+
+        # Technicians
+        tech_ahmed, _ = Technician.objects.get_or_create(
+            phone="01111111111",
+            defaults={
+                "name": "الأسطى أحمد",
+                "category": tech_cat_plumbing,
+                "location": banha,
+                "bio": "خبرة 10 سنوات في السباكة وتأسيس الشقق.",
+                "years_experience": 10,
+                "is_featured": True,
+            }
+        )
+        tech_mohamed, _ = Technician.objects.get_or_create(
+            phone="01122222222",
+            defaults={
+                "name": "الأسطى محمد",
+                "category": tech_cat_electrical,
+                "location": aghour,
+                "bio": "متخصص في أعطال الكهرباء وصيانة الأجهزة.",
+                "years_experience": 5,
+            }
+        )
+
+        # Technician Requests
+        TechnicianRequest.objects.get_or_create(
+            customer=customer_banha,
+            technician=tech_ahmed,
+            address=addr_banha_home,
+            defaults={
+                "notes": "حنفية المطبخ بتسرب مياه",
+                "status": TechnicianRequest.Status.PENDING,
+            }
+        )
+
+        # Ride Requests
+        RideRequest.objects.get_or_create(
+            customer=customer_banha,
+            defaults={
+                "pickup_location": "ميدان الإشارة، بنها",
+                "destination": "مستشفى الجامعة، بنها",
+                "vehicle_type": RideRequest.VehicleType.CAR,
+                "notes": "معايا مريض محتاج عربية مكيفة",
+                "status": RideRequest.Status.APPROVED,
+                "admin_notes": "تم توجيه السائق كابتن إبراهيم، سيارة لانسر بيضاء (س م ص 123).",
+            }
+        )
+
+        # Notifications & Device Tokens
+        DeviceToken.objects.get_or_create(
+            user=customer_banha,
+            token="dummy-fcm-token-123456",
+            defaults={"device_type": "android"}
+        )
+
+        Notification.objects.get_or_create(
+            user=customer_banha,
+            title="مرحباً بك في تيك واي!",
+            body="نتمنى لك تجربة تسوق ممتعة. لا تفوت عروض اليوم.",
+            defaults={
+                "type": Notification.NotificationType.ANNOUNCEMENT,
+                "is_read": False,
+            }
+        )
+        Notification.objects.get_or_create(
+            user=customer_banha,
+            title="تم تأكيد طلبك",
+            body="طلبك من كشري الزعيم تم تأكيده وجاري التحضير.",
+            defaults={
+                "type": Notification.NotificationType.ORDER_STATUS,
+                "is_read": True,
+            }
+        )
+
+        self.stdout.write(self.style.SUCCESS("[OK] Phase 1C: Technicians, Rides, Notifications created"))
+
         self.stdout.write(
             self.style.SUCCESS(
-                "\nSuccessfully populated Phase 1A demo data!"
+                "\nSuccessfully populated Phase 1 Demo Data!"
                 "\n---------------------------------------------------"
                 "\nLocations created: Banha, Aghour, Quesna, Arab El-Raml"
                 "\nAdmin user:  Phone: 01001234567 | Password: AdminPassword123!"
