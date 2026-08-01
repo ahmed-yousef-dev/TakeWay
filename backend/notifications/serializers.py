@@ -14,11 +14,18 @@ class DeviceTokenRegisterSerializer(serializers.ModelSerializer):
 
     If the token already exists (same device re-registering), the view
     will upsert (update_or_create) — the serializer just validates the input.
+
+    The unique validator on `token` is suppressed here because DRF's default
+    uniqueness check would reject re-registration of an existing token before
+    the view's update_or_create can run.
     """
 
     class Meta:
         model = DeviceToken
         fields = ["token", "device_type"]
+        extra_kwargs = {
+            "token": {"validators": []},  # uniqueness handled by view's update_or_create
+        }
 
 
 class NotificationSerializer(serializers.ModelSerializer):
