@@ -18,6 +18,8 @@ api_v1_patterns = [
     path("", include("businesses.urls")),
     path("", include("orders.urls")),
     path("", include("technicians.urls")),
+    path("", include("rides.urls")),
+    path("", include("notifications.urls")),
     path("", include("common.urls")),
     # API schema endpoints
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
