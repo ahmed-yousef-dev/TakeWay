@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "promotions",
     "technicians",
     "rides",
+    "notifications",
 ]
 
 MIDDLEWARE = [
