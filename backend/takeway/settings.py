@@ -224,6 +224,12 @@ OTP_EXPIRY_MINUTES = 5
 # SMS backend: swap to a real provider in production
 SMS_BACKEND = os.getenv("SMS_BACKEND", "accounts.sms_backends.ConsoleSMSBackend")
 
+# Push notification backend: swap to FCMPushBackend in production
+PUSH_NOTIFICATION_BACKEND = os.getenv(
+    "PUSH_NOTIFICATION_BACKEND",
+    "notifications.push_backends.ConsolePushBackend",
+)
+
 
 # ── API Documentation (drf-spectacular) ──────────────────────────────────────
 
