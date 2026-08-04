@@ -19,6 +19,7 @@ from rest_framework_simplejwt.views import TokenRefreshView  # noqa: F401 — re
 
 from accounts.serializers import (
     ChangePasswordSerializer,
+    DeleteAccountSerializer,
     ForgotPasswordSerializer,
     LoginSerializer,
     RequestOTPSerializer,
@@ -29,11 +30,12 @@ from accounts.serializers import (
 from accounts.services import (
     authenticate_user,
     change_password,
+    delete_account,
     generate_otp,
     get_tokens_for_user,
     reset_password,
+    verify_deletion_otp,
     verify_otp,
-    delete_account,
 )
 
 logger = logging.getLogger(__name__)
@@ -244,5 +246,17 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         return super().update(request, *args, **kwargs)
 
     def delete(self, request, *args, **kwargs):
+        serializer = DeleteAccountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        code = serializer.validated_data["code"]
+
+        try:
+            verify_deletion_otp(request.user.phone, code)
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         delete_account(request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)

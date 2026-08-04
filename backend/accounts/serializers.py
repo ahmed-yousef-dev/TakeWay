@@ -193,3 +193,15 @@ class UpdateUserSerializer(serializers.ModelSerializer):
         if not value.strip():
             raise serializers.ValidationError(_("Name cannot be blank."))
         return value.strip()
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    """Validates the OTP code for account deletion."""
+
+    code = serializers.CharField(max_length=6, min_length=6)
+
+    def validate_code(self, value: str) -> str:
+        if not value.isdigit():
+            raise serializers.ValidationError(_("OTP code must contain only digits."))
+        return value
+
