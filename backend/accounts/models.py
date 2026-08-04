@@ -14,6 +14,7 @@ Design decisions:
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+import uuid
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -122,6 +123,21 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampMixin):
     @property
     def is_admin_staff(self):
         return self.role == self.Role.ADMIN or self.is_superuser
+
+    def anonymize(self):
+        """
+        Anonymizes the user for soft deletion to comply with data retention rules.
+        Scrambles PII and propagates anonymization to related addresses.
+        """
+        self.phone = f"deleted_{self.id}_{uuid.uuid4().hex[:8]}"
+        self.name = "Deleted User"
+        self.is_active = False
+        self.location = None
+        self.save(update_fields=["phone", "name", "is_active", "location"])
+
+        # Anonymize related addresses
+        for address in self.delivery_addresses.all():
+            address.anonymize()
 
 
 class OTP(models.Model):
