@@ -13,7 +13,6 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenRefreshView  # noqa: F401 — re-exported via urls
 
@@ -37,6 +36,11 @@ from accounts.services import (
     verify_deletion_otp,
     verify_otp,
 )
+from accounts.throttles import (
+    ExponentialOTPRequestThrottle,
+    ExponentialOTPVerifyThrottle,
+    ExponentialLoginThrottle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +54,7 @@ class RequestOTPView(APIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "otp_request"
+    throttle_classes = [ExponentialOTPRequestThrottle]
 
     def post(self, request):
         serializer = RequestOTPSerializer(data=request.data)
@@ -78,8 +81,7 @@ class VerifyOTPView(APIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "otp_verify"
+    throttle_classes = [ExponentialOTPVerifyThrottle]
 
     def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
@@ -124,8 +126,7 @@ class LoginView(APIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "otp_verify"  # reuse the same bucket as OTP verify
+    throttle_classes = [ExponentialLoginThrottle]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -164,8 +165,7 @@ class ForgotPasswordView(APIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "otp_verify"
+    throttle_classes = [ExponentialOTPVerifyThrottle]
 
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
