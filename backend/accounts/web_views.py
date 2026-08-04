@@ -83,6 +83,25 @@ class WebAccountDeletionConfirmView(FormView):
         context["phone"] = self.request.session.get("delete_account_phone")
         return context
 
+    def post(self, request, *args, **kwargs):
+        if "confirm_delete" in request.POST:
+            user_id = request.session.get("verified_user_id")
+            if not user_id:
+                return redirect("web-account-delete-request")
+            
+            from accounts.models import User
+            try:
+                user = User.objects.get(id=user_id)
+                delete_account(user)
+            except User.DoesNotExist:
+                pass
+                
+            request.session.pop("delete_account_phone", None)
+            request.session.pop("verified_user_id", None)
+            return redirect(self.success_url)
+            
+        return super().post(request, *args, **kwargs)
+
     def form_valid(self, form):
         phone = self.request.session.get("delete_account_phone")
         code = form.cleaned_data["code"]
@@ -99,10 +118,9 @@ class WebAccountDeletionConfirmView(FormView):
 
         try:
             user = verify_deletion_otp(phone, code)
-            delete_account(user)
-            # Clear session
-            del self.request.session["delete_account_phone"]
-            return super().form_valid(form)
+            # Set flag in session to indicate OTP is verified and user can be deleted
+            self.request.session["verified_user_id"] = user.id
+            return self.render_to_response(self.get_context_data(form=form, show_final_modal=True))
         except ValueError as exc:
             form.add_error(None, str(exc))
             return self.form_invalid(form)
