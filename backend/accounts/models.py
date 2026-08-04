@@ -129,7 +129,8 @@ class User(AbstractBaseUser, PermissionsMixin, TimestampMixin):
         Anonymizes the user for soft deletion to comply with data retention rules.
         Scrambles PII and propagates anonymization to related addresses.
         """
-        self.phone = f"deleted_{self.id}_{uuid.uuid4().hex[:8]}"
+        # Use a short prefix to ensure it fits in the 15-character limit
+        self.phone = f"del_{self.id}"
         self.name = "Deleted User"
         self.is_active = False
         self.location = None
