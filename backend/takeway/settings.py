@@ -223,6 +223,10 @@ CORS_ALLOWED_ORIGINS = []
 OTP_LENGTH = 6
 OTP_EXPIRY_MINUTES = 5
 
+# Toggle static mock OTP for dev/testing across all OTP flows
+USE_MOCK_OTP = os.getenv("USE_MOCK_OTP", str(DEBUG)).lower() in ("true", "1", "t")
+MOCK_OTP_CODE = os.getenv("MOCK_OTP_CODE", "123456")
+
 # SMS backend: swap to a real provider in production
 SMS_BACKEND = os.getenv("SMS_BACKEND", "accounts.sms_backends.ConsoleSMSBackend")
 
