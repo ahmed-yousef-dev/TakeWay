@@ -203,3 +203,54 @@ def change_password(user: User, old_password: str, new_password: str) -> None:
     user.set_password(new_password)
     user.save(update_fields=["password"])
     logger.info("Password changed for user %s", user.pk)
+
+
+# ── Account Deletion ──────────────────────────────────────────────────────────
+
+
+def verify_deletion_otp(phone: str, code: str) -> User:
+    """
+    Verify OTP for account deletion.
+    Returns the User if successful, raises ValueError otherwise.
+    """
+    phone = normalise_phone(phone)
+
+    try:
+        otp = OTP.objects.filter(
+            phone=phone,
+            code=code,
+            is_used=False,
+        ).latest("created_at")
+    except OTP.DoesNotExist:
+        if settings.DEBUG and code == "123456":
+            otp = OTP.objects.create(
+                phone=phone,
+                code="123456",
+                expires_at=timezone.now() + timedelta(minutes=5),
+            )
+        else:
+            raise ValueError("Invalid OTP code.")
+
+    if otp.is_expired:
+        raise ValueError("OTP has expired. Please request a new one.")
+
+    otp.is_used = True
+    otp.save(update_fields=["is_used"])
+
+    try:
+        user = User.objects.get(phone=phone)
+    except User.DoesNotExist:
+        raise ValueError("No account found for this phone number.")
+
+    return user
+
+
+def delete_account(user: User) -> None:
+    """
+    Soft deletes a user account by anonymizing their PII and related records.
+    Wrapped in a transaction to ensure complete anonymization.
+    """
+    from django.db import transaction
+    with transaction.atomic():
+        user.anonymize()
+    logger.info("Account soft-deleted for user %s", user.pk)
