@@ -30,6 +30,7 @@ api_v1_patterns = [
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/", include((api_v1_patterns, "v1"))),
+    path("account/delete/", include("accounts.web_urls")),
 ]
 
 # Serve media files in development
