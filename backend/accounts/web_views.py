@@ -9,7 +9,7 @@ from django.views.generic import FormView, TemplateView
 from django.shortcuts import redirect
 from django.utils.translation import gettext_lazy as _
 
-from accounts.services import generate_otp, verify_deletion_otp, delete_account
+from accounts.services import generate_otp, verify_deletion_otp, delete_account, check_rate_limit
 from accounts.validators import validate_egyptian_phone
 
 
@@ -40,35 +40,6 @@ class AccountDeletionConfirmForm(forms.Form):
     )
 
 
-import time
-from django.core.cache import cache
-
-def _check_rate_limit(key: str, max_attempts: int = 3, base_timeout: int = 300) -> tuple[bool, int]:
-    """
-    Returns (True, 0) if allowed.
-    Returns (False, wait_seconds) if rate limited.
-    """
-    data = cache.get(key, {"attempts": 0, "locked_until": 0})
-    now = time.time()
-    
-    if data["locked_until"] > now:
-        # Already locked out, don't penalize for refreshing
-        return False, int(data["locked_until"] - now)
-        
-    attempts = data["attempts"]
-    if attempts >= max_attempts:
-        penalty = base_timeout * (2 ** (attempts - max_attempts))
-        penalty = min(penalty, 86400)  # Cap at 24 hours
-        data["locked_until"] = now + penalty
-        data["attempts"] = attempts + 1
-        cache.set(key, data, timeout=penalty)
-        return False, int(penalty)
-        
-    data["attempts"] = attempts + 1
-    cache.set(key, data, timeout=base_timeout)
-    return True, 0
-
-
 class WebAccountDeletionRequestView(FormView):
     template_name = "accounts/delete_account.html"
     form_class = AccountDeletionRequestForm
@@ -79,7 +50,7 @@ class WebAccountDeletionRequestView(FormView):
         
         # Apply rate limiting with exponential backoff (max 3 requests per 5 mins)
         throttle_key = f"web_otp_request_{phone}"
-        allowed, wait_seconds = _check_rate_limit(throttle_key, max_attempts=3, base_timeout=300)
+        allowed, wait_seconds = check_rate_limit(throttle_key, max_attempts=3, base_timeout=300)
         if not allowed:
             mins, secs = divmod(wait_seconds, 60)
             wait_str = f"{mins}m {secs}s" if mins else f"{secs}s"
@@ -118,7 +89,7 @@ class WebAccountDeletionConfirmView(FormView):
 
         # Prevent brute-forcing the OTP (max 5 attempts)
         throttle_key = f"web_otp_verify_{phone}"
-        allowed, wait_seconds = _check_rate_limit(throttle_key, max_attempts=5, base_timeout=300)
+        allowed, wait_seconds = check_rate_limit(throttle_key, max_attempts=5, base_timeout=300)
         if not allowed:
             mins, secs = divmod(wait_seconds, 60)
             wait_str = f"{mins}m {secs}s" if mins else f"{secs}s"

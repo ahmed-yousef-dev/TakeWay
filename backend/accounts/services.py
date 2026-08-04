@@ -11,11 +11,41 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.utils import timezone
+from django.core.cache import cache
+import time
 
 from accounts.models import OTP, User
 from accounts.validators import normalise_phone
 
 logger = logging.getLogger(__name__)
+
+# ── Rate Limiting ─────────────────────────────────────────────────────────────
+
+def check_rate_limit(key: str, max_attempts: int = 3, base_timeout: int = 300) -> tuple[bool, int]:
+    """
+    Returns (True, 0) if allowed.
+    Returns (False, wait_seconds) if rate limited.
+    """
+    data = cache.get(key, {"attempts": 0, "locked_until": 0})
+    now = time.time()
+    
+    if data["locked_until"] > now:
+        # Already locked out, don't penalize for refreshing
+        return False, int(data["locked_until"] - now)
+        
+    attempts = data["attempts"]
+    if attempts >= max_attempts:
+        penalty = base_timeout * (2 ** (attempts - max_attempts))
+        penalty = min(penalty, 86400)  # Cap at 24 hours
+        data["locked_until"] = now + penalty
+        data["attempts"] = attempts + 1
+        cache.set(key, data, timeout=penalty)
+        return False, int(penalty)
+        
+    data["attempts"] = attempts + 1
+    cache.set(key, data, timeout=base_timeout)
+    return True, 0
+
 
 # ── OTP helpers ───────────────────────────────────────────────────────────────
 
