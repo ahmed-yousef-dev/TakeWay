@@ -1,0 +1,28 @@
+{% extends "accounts/base.html" %}
+
+{% block content %}
+    <h1>Confirm Deletion</h1>
+    <p>We've sent an OTP to <strong>{{ phone }}</strong>. Enter the code below to permanently delete your account.</p>
+    
+    {% if form.errors %}
+        <div class="alert alert-error">
+            {% for field in form %}
+                {% for error in field.errors %}
+                    <div>{{ error }}</div>
+                {% endfor %}
+            {% endfor %}
+            {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="{{ form.code.id_for_label }}">{{ form.code.label }}</label>
+            {{ form.code }}
+        </div>
+        <button type="submit" class="btn" style="background-color: var(--error);">Permanently Delete Account</button>
+    </form>
+{% endblock %}

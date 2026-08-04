@@ -1,0 +1,28 @@
+{% extends "accounts/base.html" %}
+
+{% block content %}
+    <h1>Delete Your Account</h1>
+    <p>Enter your registered phone number to receive an OTP and confirm account deletion. This action cannot be undone.</p>
+    
+    {% if form.errors %}
+        <div class="alert alert-error">
+            {% for field in form %}
+                {% for error in field.errors %}
+                    <div>{{ error }}</div>
+                {% endfor %}
+            {% endfor %}
+            {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>
+            {{ form.phone }}
+        </div>
+        <button type="submit" class="btn">Send OTP</button>
+    </form>
+{% endblock %}
