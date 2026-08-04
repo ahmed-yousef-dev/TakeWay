@@ -85,7 +85,9 @@ def generate_otp(phone: str) -> OTP:
     # Invalidate previous unused OTPs for this phone
     OTP.objects.filter(phone=phone, is_used=False).update(is_used=True)
 
-    code = "123456" if settings.DEBUG else _generate_code(length)
+    use_mock = getattr(settings, "USE_MOCK_OTP", False)
+    mock_code = getattr(settings, "MOCK_OTP_CODE", "123456")
+    code = mock_code if use_mock else _generate_code(length)
     otp = OTP.objects.create(
         phone=phone,
         code=code,
@@ -267,10 +269,12 @@ def verify_deletion_otp(phone: str, code: str) -> User:
             is_used=False,
         ).latest("created_at")
     except OTP.DoesNotExist:
-        if settings.DEBUG and code == "123456":
+        use_mock = getattr(settings, "USE_MOCK_OTP", False)
+        mock_code = getattr(settings, "MOCK_OTP_CODE", "123456")
+        if use_mock and code == mock_code:
             otp = OTP.objects.create(
                 phone=phone,
-                code="123456",
+                code=mock_code,
                 expires_at=timezone.now() + timedelta(minutes=5),
             )
         else:
