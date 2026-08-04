@@ -15,7 +15,7 @@ class BaseExponentialThrottle(BaseThrottle):
             
         try:
             phone = normalise_phone(phone)
-        except ValidationError:
+        except (ValidationError, ValueError):
             pass
 
         throttle_key = f"{self.cache_prefix}_{phone}"

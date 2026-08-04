@@ -59,7 +59,7 @@ def test_user_cannot_login_after_deletion(api_client):
     user = UserFactory(phone="01099999999")
     user.anonymize()
     url = reverse("v1:otp-request")
-    response = api_client.post(url, {"phone": user.phone})
+    response = api_client.post(url, {"phone": user.phone, "intent": "login"})
     # Since the number was changed to del_1, they can't even request OTP with their original phone
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 

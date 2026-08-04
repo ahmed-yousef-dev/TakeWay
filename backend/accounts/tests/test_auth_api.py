@@ -41,21 +41,48 @@ class TestRequestOTP:
     url = "/api/v1/auth/otp/request/"
 
     def test_valid_phone_returns_200(self, client):
-        resp = client.post(self.url, {"phone": "01012345678"})
+        resp = client.post(self.url, {"phone": "01012345678", "intent": "register"})
         assert resp.status_code == status.HTTP_200_OK
         assert "detail" in resp.data
 
     def test_otp_record_created(self, client):
-        client.post(self.url, {"phone": "01012345678"})
+        client.post(self.url, {"phone": "01012345678", "intent": "register"})
         assert OTP.objects.filter(phone="01012345678", is_used=False).exists()
 
     def test_invalid_phone_returns_400(self, client):
-        resp = client.post(self.url, {"phone": "not-a-phone"})
+        resp = client.post(self.url, {"phone": "not-a-phone", "intent": "register"})
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_missing_phone_returns_400(self, client):
-        resp = client.post(self.url, {})
+        resp = client.post(self.url, {"intent": "register"})
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_missing_intent_returns_400(self, client):
+        resp = client.post(self.url, {"phone": "01012345678"})
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_register_with_existing_user_returns_400(self, client):
+        UserFactory(phone="01012345678")
+        resp = client.post(self.url, {"phone": "01012345678", "intent": "register"})
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        
+    def test_login_with_non_existing_user_returns_400(self, client):
+        resp = client.post(self.url, {"phone": "01012345678", "intent": "login"})
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_login_with_existing_user_returns_200(self, client):
+        UserFactory(phone="01012345678")
+        resp = client.post(self.url, {"phone": "01012345678", "intent": "login"})
+        assert resp.status_code == status.HTTP_200_OK
+
+    def test_rate_limiting(self, client):
+        for _ in range(3):
+            resp = client.post(self.url, {"phone": "01022222222", "intent": "register"})
+            assert resp.status_code == status.HTTP_200_OK
+            
+        resp = client.post(self.url, {"phone": "01022222222", "intent": "register"})
+        assert resp.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        assert "Retry-After" in resp.headers
 
 
 # ── POST /api/v1/auth/otp/verify/ ────────────────────────────────────────────
