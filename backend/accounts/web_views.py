@@ -40,6 +40,25 @@ class AccountDeletionConfirmForm(forms.Form):
     )
 
 
+from django.core.cache import cache
+
+def _check_rate_limit(key: str, max_attempts: int = 3, base_timeout: int = 300) -> bool:
+    """
+    Returns True if allowed, False if rate limited.
+    Applies exponential backoff after max_attempts.
+    """
+    attempts = cache.get(key, 0)
+    
+    if attempts >= max_attempts:
+        penalty = base_timeout * (2 ** (attempts - max_attempts))
+        penalty = min(penalty, 86400)  # Cap at 24 hours
+        cache.set(key, attempts + 1, timeout=penalty)
+        return False
+        
+    cache.set(key, attempts + 1, timeout=base_timeout)
+    return True
+
+
 class WebAccountDeletionRequestView(FormView):
     template_name = "accounts/delete_account.html"
     form_class = AccountDeletionRequestForm
@@ -47,6 +66,13 @@ class WebAccountDeletionRequestView(FormView):
 
     def form_valid(self, form):
         phone = form.cleaned_data["phone"]
+        
+        # Apply rate limiting with exponential backoff (max 3 requests per 5 mins)
+        throttle_key = f"web_otp_request_{phone}"
+        if not _check_rate_limit(throttle_key, max_attempts=3, base_timeout=300):
+            form.add_error(None, _("Too many requests. Please try again later."))
+            return self.form_invalid(form)
+
         try:
             generate_otp(phone)
             # Store phone in session for the next step
@@ -75,6 +101,12 @@ class WebAccountDeletionConfirmView(FormView):
     def form_valid(self, form):
         phone = self.request.session.get("delete_account_phone")
         code = form.cleaned_data["code"]
+
+        # Prevent brute-forcing the OTP (max 5 attempts)
+        throttle_key = f"web_otp_verify_{phone}"
+        if not _check_rate_limit(throttle_key, max_attempts=5, base_timeout=300):
+            form.add_error(None, _("Too many failed attempts. Please request a new OTP later."))
+            return self.form_invalid(form)
 
         try:
             user = verify_deletion_otp(phone, code)
