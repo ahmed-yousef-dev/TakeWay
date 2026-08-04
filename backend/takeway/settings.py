@@ -166,8 +166,8 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "60/minute",
-        "user": "200/minute",
+        "anon": "10/minute",
+        "user": "100/minute",
         # Custom scopes (applied per view)
         "otp_request": "5/hour",
         "otp_verify": "10/hour",
