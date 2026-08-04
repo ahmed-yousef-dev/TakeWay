@@ -33,6 +33,7 @@ from accounts.services import (
     get_tokens_for_user,
     reset_password,
     verify_otp,
+    delete_account,
 )
 
 logger = logging.getLogger(__name__)
@@ -241,3 +242,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     def update(self, request, *args, **kwargs):
         kwargs["partial"] = True  # Always treat as PATCH
         return super().update(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        delete_account(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
