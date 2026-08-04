@@ -21,6 +21,16 @@ class AccountDeletionRequestForm(forms.Form):
         widget=forms.TextInput(attrs={"placeholder": "e.g. 01012345678", "class": "form-control"}),
     )
 
+    def clean_phone(self):
+        phone = self.cleaned_data.get("phone")
+        if phone:
+            from accounts.validators import normalise_phone
+            from accounts.models import User
+            phone = normalise_phone(phone)
+            if not User.objects.filter(phone=phone).exists():
+                raise forms.ValidationError(_("No account is registered with this phone number."))
+        return phone
+
 
 class AccountDeletionConfirmForm(forms.Form):
     code = forms.CharField(
