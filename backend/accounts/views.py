@@ -13,6 +13,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenRefreshView  # noqa: F401 — re-exported via urls
 
@@ -54,7 +55,7 @@ class RequestOTPView(APIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [ExponentialOTPRequestThrottle]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES + [ExponentialOTPRequestThrottle]
 
     def post(self, request):
         serializer = RequestOTPSerializer(data=request.data)
@@ -81,7 +82,7 @@ class VerifyOTPView(APIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [ExponentialOTPVerifyThrottle]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES + [ExponentialOTPVerifyThrottle]
 
     def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
@@ -126,7 +127,7 @@ class LoginView(APIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [ExponentialLoginThrottle]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES + [ExponentialLoginThrottle]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -165,7 +166,7 @@ class ForgotPasswordView(APIView):
     """
 
     permission_classes = [AllowAny]
-    throttle_classes = [ExponentialOTPVerifyThrottle]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES + [ExponentialOTPVerifyThrottle]
 
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
@@ -232,6 +233,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     """
 
     permission_classes = [IsAuthenticated]
+    throttle_classes = api_settings.DEFAULT_THROTTLE_CLASSES + [ExponentialOTPVerifyThrottle]
 
     def get_serializer_class(self):
         if self.request.method in ("PUT", "PATCH"):

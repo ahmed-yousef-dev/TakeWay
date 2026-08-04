@@ -9,7 +9,16 @@ class BaseExponentialThrottle(BaseThrottle):
     cache_prefix = "throttle"
 
     def allow_request(self, request, view):
+        # Only apply exponential throttling to state-changing requests
+        if request.method not in ["POST", "DELETE"]:
+            return True
+
         phone = request.data.get("phone")
+        
+        # Fallback to the user's phone if authenticated (e.g., DELETE /profile/)
+        if not phone and getattr(request, "user", None) and request.user.is_authenticated:
+            phone = request.user.phone
+
         if not phone:
             return True
             
