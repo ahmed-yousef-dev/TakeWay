@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% load static %}
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -47,19 +48,15 @@
         }
 
         .logo {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary);
             margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
         }
 
-        .logo svg {
-            width: 32px;
-            height: 32px;
+        .logo img {
+            max-width: 150px;
+            height: auto;
         }
 
         h1 {
@@ -153,12 +150,7 @@
 <body>
     <div class="container">
         <div class="logo">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="currentColor"/>
-                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            TakeWay
+            <img src="{% static 'images/logo.jpeg' %}" alt="TakeWay Logo">
         </div>
         {% block content %}{% endblock %}
     </div>
