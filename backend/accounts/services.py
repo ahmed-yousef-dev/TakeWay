@@ -26,6 +26,9 @@ def check_rate_limit(key: str, max_attempts: int = 3, base_timeout: int = 300) -
     Returns (True, 0) if allowed.
     Returns (False, wait_seconds) if rate limited.
     """
+    if getattr(settings, "ENABLE_EXPONENTIAL_THROTTLES", True) is False:
+        return True, 0
+        
     data = cache.get(key, {"attempts": 0, "locked_until": 0})
     now = time.time()
     

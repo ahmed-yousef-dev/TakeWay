@@ -75,6 +75,8 @@ class TestRequestOTP:
         resp = client.post(self.url, {"phone": "01012345678", "intent": "login"})
         assert resp.status_code == status.HTTP_200_OK
 
+    from django.test import override_settings
+    @override_settings(ENABLE_EXPONENTIAL_THROTTLES=True)
     def test_rate_limiting(self, client):
         for _ in range(3):
             resp = client.post(self.url, {"phone": "01022222222", "intent": "register"})

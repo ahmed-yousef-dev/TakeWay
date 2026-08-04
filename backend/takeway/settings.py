@@ -146,6 +146,8 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024  # 5 MB
 
 # ── Django REST Framework ─────────────────────────────────────────────────────
 
+
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -240,3 +242,15 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
 }
+
+# ── API Throttling Overrides ─────────────────────────────────────────────────
+
+# 1. Master switch for ALL standard rate limits
+ENABLE_API_THROTTLING = os.getenv("ENABLE_API_THROTTLING", "False" if DEBUG else "True") == "True"
+
+# 2. Specific switch just for the strict exponential ones
+ENABLE_EXPONENTIAL_THROTTLES = os.getenv("ENABLE_EXPONENTIAL_THROTTLES", "False" if DEBUG else "True") == "True"
+
+# If global API throttling is disabled, clear the default DRF throttles
+if not ENABLE_API_THROTTLING:
+    REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []
