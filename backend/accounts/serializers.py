@@ -16,10 +16,28 @@ class RequestOTPSerializer(serializers.Serializer):
     """Validates the phone number for OTP request."""
 
     phone = serializers.CharField(max_length=15)
+    intent = serializers.ChoiceField(
+        choices=["register", "login", "reset_password", "delete_account"]
+    )
 
     def validate_phone(self, value: str) -> str:
         validate_egyptian_phone(value)
         return normalise_phone(value)
+
+    def validate(self, attrs):
+        phone = attrs.get("phone")
+        intent = attrs.get("intent")
+        
+        user_exists = User.objects.filter(phone=phone).exists()
+        
+        if intent == "register":
+            if user_exists:
+                raise serializers.ValidationError({"phone": _("An account is already registered with this phone number.")})
+        else:
+            if not user_exists:
+                raise serializers.ValidationError({"phone": _("No account is registered with this phone number.")})
+                
+        return attrs
 
 
 class VerifyOTPSerializer(serializers.Serializer):
