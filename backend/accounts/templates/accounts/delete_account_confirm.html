@@ -17,12 +17,45 @@
         </div>
     {% endif %}
 
-    <form method="post">
+    <form method="post" id="deleteForm">
         {% csrf_token %}
         <div class="form-group">
             <label for="{{ form.code.id_for_label }}">{{ form.code.label }}</label>
             {{ form.code }}
         </div>
-        <button type="submit" class="btn" style="background-color: var(--error);">Permanently Delete Account</button>
+        <button type="submit" class="btn" id="submitBtn" style="background-color: var(--error);">Permanently Delete Account</button>
     </form>
+
+    {% if form.retry_after %}
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var btn = document.getElementById("submitBtn");
+            var input = document.getElementById("{{ form.code.id_for_label }}");
+            var timeLeft = {{ form.retry_after }};
+            
+            btn.disabled = true;
+            btn.style.opacity = "0.5";
+            btn.style.cursor = "not-allowed";
+            if (input) input.disabled = true;
+            
+            var originalText = btn.innerText;
+            
+            var timer = setInterval(function() {
+                timeLeft--;
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    btn.disabled = false;
+                    btn.style.opacity = "1";
+                    btn.style.cursor = "pointer";
+                    if (input) input.disabled = false;
+                    btn.innerText = originalText;
+                } else {
+                    var m = Math.floor(timeLeft / 60);
+                    var s = timeLeft % 60;
+                    btn.innerText = "Try again in " + (m > 0 ? m + "m " : "") + s + "s";
+                }
+            }, 1000);
+        });
+    </script>
+    {% endif %}
 {% endblock %}

@@ -40,23 +40,33 @@ class AccountDeletionConfirmForm(forms.Form):
     )
 
 
+import time
 from django.core.cache import cache
 
-def _check_rate_limit(key: str, max_attempts: int = 3, base_timeout: int = 300) -> bool:
+def _check_rate_limit(key: str, max_attempts: int = 3, base_timeout: int = 300) -> tuple[bool, int]:
     """
-    Returns True if allowed, False if rate limited.
-    Applies exponential backoff after max_attempts.
+    Returns (True, 0) if allowed.
+    Returns (False, wait_seconds) if rate limited.
     """
-    attempts = cache.get(key, 0)
+    data = cache.get(key, {"attempts": 0, "locked_until": 0})
+    now = time.time()
     
+    if data["locked_until"] > now:
+        # Already locked out, don't penalize for refreshing
+        return False, int(data["locked_until"] - now)
+        
+    attempts = data["attempts"]
     if attempts >= max_attempts:
         penalty = base_timeout * (2 ** (attempts - max_attempts))
         penalty = min(penalty, 86400)  # Cap at 24 hours
-        cache.set(key, attempts + 1, timeout=penalty)
-        return False
+        data["locked_until"] = now + penalty
+        data["attempts"] = attempts + 1
+        cache.set(key, data, timeout=penalty)
+        return False, int(penalty)
         
-    cache.set(key, attempts + 1, timeout=base_timeout)
-    return True
+    data["attempts"] = attempts + 1
+    cache.set(key, data, timeout=base_timeout)
+    return True, 0
 
 
 class WebAccountDeletionRequestView(FormView):
@@ -69,8 +79,12 @@ class WebAccountDeletionRequestView(FormView):
         
         # Apply rate limiting with exponential backoff (max 3 requests per 5 mins)
         throttle_key = f"web_otp_request_{phone}"
-        if not _check_rate_limit(throttle_key, max_attempts=3, base_timeout=300):
-            form.add_error(None, _("Too many requests. Please try again later."))
+        allowed, wait_seconds = _check_rate_limit(throttle_key, max_attempts=3, base_timeout=300)
+        if not allowed:
+            mins, secs = divmod(wait_seconds, 60)
+            wait_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+            form.add_error(None, _(f"Too many requests. Please try again in {wait_str}."))
+            form.retry_after = wait_seconds
             return self.form_invalid(form)
 
         try:
@@ -104,8 +118,12 @@ class WebAccountDeletionConfirmView(FormView):
 
         # Prevent brute-forcing the OTP (max 5 attempts)
         throttle_key = f"web_otp_verify_{phone}"
-        if not _check_rate_limit(throttle_key, max_attempts=5, base_timeout=300):
-            form.add_error(None, _("Too many failed attempts. Please request a new OTP later."))
+        allowed, wait_seconds = _check_rate_limit(throttle_key, max_attempts=5, base_timeout=300)
+        if not allowed:
+            mins, secs = divmod(wait_seconds, 60)
+            wait_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+            form.add_error(None, _(f"Too many failed attempts. Please try again in {wait_str}."))
+            form.retry_after = wait_seconds
             return self.form_invalid(form)
 
         try:
