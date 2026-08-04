@@ -32,23 +32,32 @@ def check_rate_limit(key: str, max_attempts: int = 3, base_timeout: int = 300) -
     data = cache.get(key, {"attempts": 0, "locked_until": 0})
     now = time.time()
     
+    # 1. Active Lockout Check
     if data["locked_until"] > now:
-        # Already locked out, don't penalize for refreshing
+        # User is currently serving a penalty. Do not count this as a new attempt.
+        # Just return the remaining wait time.
         return False, int(data["locked_until"] - now)
         
     attempts = data["attempts"]
+    
+    # 2. The Punishment Phase (Exponential Backoff)
     if attempts >= max_attempts:
+        # Calculate penalty: doubles for every failed attempt past the max limit
         penalty = base_timeout * (2 ** (attempts - max_attempts))
-        penalty = min(penalty, 86400)  # Cap at 24 hours
+        penalty = min(penalty, 86400)  # Cap the maximum penalty at 24 hours
+        
         data["locked_until"] = now + penalty
         data["attempts"] = attempts + 1
-        # The cache MUST outlive the penalty so we remember their strikes!
-        # We keep the record for 24 hours (86400s) after the penalty expires.
+        
+        # The cache MUST outlive the penalty so the system remembers repeat offenders.
+        # We keep the strike record alive for an extra 24 hours (86400s) after the penalty expires.
         cache.set(key, data, timeout=penalty + 86400)
         return False, int(penalty)
         
+    # 3. The Forgiveness Phase (Grace Period)
     data["attempts"] = attempts + 1
-    # Keep track of attempts for an hour before resetting
+    # User hasn't hit the max attempts yet. Track their strikes, but forgive them 
+    # and wipe the slate clean if they stop trying for 1 hour (3600s).
     cache.set(key, data, timeout=3600)
     return True, 0
 
