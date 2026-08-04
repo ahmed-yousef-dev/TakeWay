@@ -66,6 +66,15 @@ class DeliveryAddress(SoftDeleteMixin, TimestampMixin):
     def __str__(self):
         return f"{self.get_label_display()} - {self.user.name}"
 
+    def anonymize(self):
+        """
+        Anonymizes the address details for soft deletion.
+        """
+        self.address_details = "Deleted Address"
+        self.latitude = None
+        self.longitude = None
+        self.save(update_fields=["address_details", "latitude", "longitude"])
+
 
 class Cart(TimestampMixin):
     """
