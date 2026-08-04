@@ -42,11 +42,14 @@ def check_rate_limit(key: str, max_attempts: int = 3, base_timeout: int = 300) -
         penalty = min(penalty, 86400)  # Cap at 24 hours
         data["locked_until"] = now + penalty
         data["attempts"] = attempts + 1
-        cache.set(key, data, timeout=penalty)
+        # The cache MUST outlive the penalty so we remember their strikes!
+        # We keep the record for 24 hours (86400s) after the penalty expires.
+        cache.set(key, data, timeout=penalty + 86400)
         return False, int(penalty)
         
     data["attempts"] = attempts + 1
-    cache.set(key, data, timeout=base_timeout)
+    # Keep track of attempts for an hour before resetting
+    cache.set(key, data, timeout=3600)
     return True, 0
 
 
