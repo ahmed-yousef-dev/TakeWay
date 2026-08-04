@@ -65,11 +65,23 @@ def test_user_cannot_login_after_deletion(api_client):
 
 
 def test_delete_account_api(api_client):
-    """Verify the DELETE /api/v1/auth/profile/ endpoint soft deletes the user."""
+    """Verify the DELETE /api/v1/auth/profile/ endpoint soft deletes the user with valid OTP."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
     url = reverse("v1:user-profile")
+    
+    # 1. Missing OTP code
     response = api_client.delete(url)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    # 2. Invalid OTP code
+    response = api_client.delete(url, {"code": "000000"}, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    # 3. Valid OTP code
+    from accounts.services import generate_otp
+    otp = generate_otp(user.phone)
+    response = api_client.delete(url, {"code": otp.code}, format="json")
     
     assert response.status_code == status.HTTP_204_NO_CONTENT
     
