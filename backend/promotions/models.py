@@ -205,3 +205,12 @@ class Offer(SoftDeleteMixin, TimestampMixin):
 
     def __str__(self):
         return f"{self.title} — {self.business.name} ({self.get_discount_type_display()})"
+
+    def calculate_discounted_price(self, base_price):
+        from decimal import Decimal
+        if self.discount_type == self.DiscountType.PERCENTAGE:
+            discount = base_price * (self.discount_value / Decimal('100.00'))
+            discounted = base_price - discount
+        else:
+            discounted = base_price - self.discount_value
+        return max(Decimal('0.00'), discounted)

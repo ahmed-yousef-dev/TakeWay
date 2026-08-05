@@ -288,6 +288,33 @@ class Product(SoftDeleteMixin, TimestampMixin):
     def has_variants(self):
         return self.variants.filter(is_available=True).exists()
 
+    def get_best_active_offer(self):
+        from datetime import date
+        today = date.today()
+        applicable_offers = []
+
+        for offer in self.offers.all():
+            if offer.is_active and (offer.start_date is None or offer.start_date <= today) and (offer.end_date is None or offer.end_date >= today):
+                applicable_offers.append(offer)
+
+        for offer in self.business.offers.all():
+            if offer.is_active and len(offer.products.all()) == 0 and (offer.start_date is None or offer.start_date <= today) and (offer.end_date is None or offer.end_date >= today):
+                applicable_offers.append(offer)
+
+        if not applicable_offers:
+            return None
+
+        best_offer = None
+        lowest_price = self.selling_price
+
+        for offer in applicable_offers:
+            price = offer.calculate_discounted_price(self.selling_price)
+            if price < lowest_price:
+                lowest_price = price
+                best_offer = offer
+
+        return best_offer
+
 
 class ProductVariant(models.Model):
     """
