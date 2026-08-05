@@ -248,7 +248,7 @@ class Product(SoftDeleteMixin, TimestampMixin):
     )
     image = models.ImageField(
         _("image"),
-        upload_to="products/",
+        upload_to="products/images/",
         null=True,
         blank=True,
     )
