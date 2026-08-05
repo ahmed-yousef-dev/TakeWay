@@ -413,8 +413,8 @@ class AnythingRequestViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        instance.is_active = False
-        instance.save(update_fields=["is_active"])
+        instance.status = AnythingRequest.Status.CANCELLED
+        instance.save(update_fields=["status"])
         return Response(
             AnythingRequestSerializer(instance, context={"request": request}).data
         )

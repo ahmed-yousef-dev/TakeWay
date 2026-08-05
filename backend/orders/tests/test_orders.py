@@ -885,8 +885,8 @@ class TestAnythingRequestAPI:
     # Cancel
     # ------------------------------------------------------------------
 
-    def test_cancel_pending_request_soft_deletes(self):
-        """Cancelling a pending request marks is_active=False."""
+    def test_cancel_pending_request_updates_status(self):
+        """Cancelling a pending request updates status to CANCELLED."""
         req = AnythingRequest.objects.create(
             customer=self.user,
             delivery_address=self.address,
@@ -895,7 +895,7 @@ class TestAnythingRequestAPI:
         response = self.client.post(self._cancel_url(req))
         assert response.status_code == status.HTTP_200_OK
         req.refresh_from_db()
-        assert req.is_active is False
+        assert req.status == AnythingRequest.Status.CANCELLED
 
     def test_cancel_non_pending_request_returns_400(self):
         """Only pending requests can be cancelled."""
