@@ -47,7 +47,7 @@ from businesses.serializers import (
     ProductListSerializer,
 )
 from promotions.models import Banner, Offer
-from promotions.serializers import BannerSerializer, OfferSerializer
+from promotions.serializers import BannerSerializer
 
 
 MAX_SEARCH_RESULTS = 10  # Cap per result type for the search endpoint
@@ -112,19 +112,32 @@ class HomeAPIView(APIView):
             featured_qs = featured_qs.filter(location_id=location_id)
         featured_businesses = featured_qs[:10]
 
-        # ── Today's offers ────────────────────────────────────────────────────
-        offers_qs = Offer.objects.filter(
+        # ── Hot Deals ─────────────────────────────────────────────────────────
+        active_offers = Offer.objects.filter(
             is_active=True,
-        ).filter(_start_date_ok(today)).filter(_end_date_ok(today)).select_related("business")
+        ).filter(_start_date_ok(today)).filter(_end_date_ok(today))
+        
+        business_wide_offers = active_offers.filter(products__isnull=True)
+
+        hot_deals_qs = Product.objects.filter(
+            is_active=True,
+            is_available=True,
+        ).filter(
+            Q(offers__in=active_offers) | Q(business__offers__in=business_wide_offers)
+        ).distinct().select_related("business", "product_category").prefetch_related(
+            "offers", "business__offers", "business__offers__products"
+        )
+
         if location_id:
-            offers_qs = offers_qs.filter(business__location_id=location_id)
-        todays_offers = offers_qs[:10]
+            hot_deals_qs = hot_deals_qs.filter(business__location_id=location_id)
+
+        hot_deals = hot_deals_qs[:10]
 
         return Response({
             "banners": BannerSerializer(banners, many=True, context={"request": request}).data,
             "categories": BusinessCategorySerializer(categories, many=True, context={"request": request}).data,
             "featured_businesses": BusinessListSerializer(featured_businesses, many=True, context={"request": request}).data,
-            "todays_offers": OfferSerializer(todays_offers, many=True, context={"request": request}).data,
+            "hot_deals": ProductListSerializer(hot_deals, many=True, context={"request": request}).data,
         })
 
 
@@ -172,7 +185,9 @@ class UnifiedSearchAPIView(APIView):
             Q(name__icontains=query) | Q(description__icontains=query),
             is_active=True,
             is_available=True,
-        ).select_related("business", "product_category")
+        ).select_related("business", "product_category").prefetch_related(
+            "offers", "business__offers", "business__offers__products"
+        )
 
         if location_id:
             product_qs = product_qs.filter(business__location_id=location_id)
