@@ -722,6 +722,8 @@ class TestAnythingRequestAPI:
     """
 
     LIST_URL = "/api/v1/anything-requests/"
+    TEXT_URL = "/api/v1/anything-requests/text/"
+    IMAGE_URL = "/api/v1/anything-requests/image/"
 
     @staticmethod
     def _detail_url(obj):
@@ -750,7 +752,7 @@ class TestAnythingRequestAPI:
             "delivery_address_id": self.address.pk,
             "request_text": "I need a kilo of fresh dates.",
         }
-        response = self.client.post(self.LIST_URL, payload, format="json")
+        response = self.client.post(self.TEXT_URL, payload, format="json")
 
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
@@ -769,7 +771,7 @@ class TestAnythingRequestAPI:
             "request_text": "Find me this item.",
             "images": [img],
         }
-        response = self.client.post(self.LIST_URL, payload, format="multipart")
+        response = self.client.post(self.IMAGE_URL, payload, format="multipart")
 
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
@@ -786,13 +788,19 @@ class TestAnythingRequestAPI:
             "delivery_address_id": other_address.pk,
             "request_text": "Sneak in with another's address.",
         }
-        response = self.client.post(self.LIST_URL, payload, format="json")
+        response = self.client.post(self.TEXT_URL, payload, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_create_request_missing_text_returns_400(self):
-        """request_text is required."""
+    def test_text_request_missing_text_returns_400(self):
+        """request_text is required for the text endpoint."""
         payload = {"delivery_address_id": self.address.pk}
-        response = self.client.post(self.LIST_URL, payload, format="json")
+        response = self.client.post(self.TEXT_URL, payload, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_image_request_missing_images_returns_400(self):
+        """images are required for the image endpoint."""
+        payload = {"delivery_address_id": self.address.pk, "request_text": "text alone isn't enough"}
+        response = self.client.post(self.IMAGE_URL, payload, format="multipart")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_unauthenticated_create_returns_401(self):
@@ -801,7 +809,7 @@ class TestAnythingRequestAPI:
             "request_text": "Anything?",
         }
         anon = APIClient()
-        response = anon.post(self.LIST_URL, payload, format="json")
+        response = anon.post(self.TEXT_URL, payload, format="json")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     # ------------------------------------------------------------------
