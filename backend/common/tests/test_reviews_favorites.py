@@ -85,7 +85,7 @@ class TestReviewsAPI:
         from orders.models import DeliveryAddress
         address = DeliveryAddress.objects.create(
             user=user,
-            label=DeliveryAddress.Label.HOME,
+            label="Home",
             address_details="123 Test St"
         )
         
@@ -114,7 +114,7 @@ class TestReviewsAPI:
         from orders.models import DeliveryAddress
         address = DeliveryAddress.objects.create(
             user=user,
-            label=DeliveryAddress.Label.HOME,
+            label="Home",
             address_details="123 Test St"
         )
         order = Order.objects.create(customer=user, delivery_address=address, status=Order.Status.DELIVERED)

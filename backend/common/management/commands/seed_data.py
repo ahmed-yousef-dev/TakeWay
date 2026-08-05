@@ -721,7 +721,7 @@ class Command(BaseCommand):
         # Delivery Addresses
         addr_banha_home, _ = DeliveryAddress.objects.get_or_create(
             user=customer_banha,
-            label=DeliveryAddress.Label.HOME,
+            label="Home",
             defaults={
                 "address_details": "شارع الجيش، عمارة الأمل، شقة 4، بنها",
                 "latitude": Decimal("30.466700"),
@@ -730,7 +730,7 @@ class Command(BaseCommand):
         )
         addr_banha_work, _ = DeliveryAddress.objects.get_or_create(
             user=customer_banha,
-            label=DeliveryAddress.Label.WORK,
+            label="Work",
             defaults={
                 "address_details": "برج السلام، شقة 12، بنها",
                 "latitude": Decimal("30.468000"),
@@ -739,7 +739,7 @@ class Command(BaseCommand):
         )
         addr_raml_home, _ = DeliveryAddress.objects.get_or_create(
             user=customer_raml,
-            label=DeliveryAddress.Label.HOME,
+            label="Home",
             defaults={
                 "address_details": "الشارع الرئيسي، بجوار المسجد الكبير، عرب الرمل",
             },
