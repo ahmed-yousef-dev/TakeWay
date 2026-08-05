@@ -40,9 +40,17 @@ class WorkingHourSerializer(serializers.ModelSerializer):
 class ProductVariantPublicSerializer(serializers.ModelSerializer):
     """Variant data for customers — selling_price only, no cost_price."""
 
+    discounted_price = serializers.SerializerMethodField()
+
     class Meta:
         model = ProductVariant
-        fields = ["id", "name", "selling_price", "is_available"]
+        fields = ["id", "name", "selling_price", "discounted_price", "is_available"]
+
+    def get_discounted_price(self, obj):
+        offer = obj.product.get_best_active_offer()
+        if offer:
+            return offer.calculate_discounted_price(obj.selling_price)
+        return None
 
 
 class ProductListSerializer(serializers.ModelSerializer):
@@ -51,6 +59,9 @@ class ProductListSerializer(serializers.ModelSerializer):
     Excludes variants (too much data) — detail endpoint includes them.
     """
 
+    discounted_price = serializers.SerializerMethodField()
+    active_offer_title = serializers.SerializerMethodField()
+
     class Meta:
         model = Product
         fields = [
@@ -59,16 +70,30 @@ class ProductListSerializer(serializers.ModelSerializer):
             "description",
             "image",
             "selling_price",
+            "discounted_price",
+            "active_offer_title",
             "is_available",
             "has_variants",
             "product_category",
         ]
+
+    def get_discounted_price(self, obj):
+        offer = obj.get_best_active_offer()
+        if offer:
+            return offer.calculate_discounted_price(obj.selling_price)
+        return None
+
+    def get_active_offer_title(self, obj):
+        offer = obj.get_best_active_offer()
+        return offer.title if offer else None
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
     """Full product data including all available variants."""
 
     variants = ProductVariantPublicSerializer(many=True, read_only=True)
+    discounted_price = serializers.SerializerMethodField()
+    active_offer_title = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -78,10 +103,22 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             "description",
             "image",
             "selling_price",
+            "discounted_price",
+            "active_offer_title",
             "is_available",
             "variants",
             "product_category",
         ]
+
+    def get_discounted_price(self, obj):
+        offer = obj.get_best_active_offer()
+        if offer:
+            return offer.calculate_discounted_price(obj.selling_price)
+        return None
+
+    def get_active_offer_title(self, obj):
+        offer = obj.get_best_active_offer()
+        return offer.title if offer else None
 
 
 class ProductCategoryWithProductsSerializer(serializers.ModelSerializer):
@@ -95,8 +132,9 @@ class ProductCategoryWithProductsSerializer(serializers.ModelSerializer):
 
     def get_products(self, obj):
         # Only return active, available products within this category
-        qs = obj.products.filter(is_active=True)
-        return ProductListSerializer(qs, many=True, context=self.context).data
+        # Using .all() preserves the Prefetch done in the view, avoiding N+1
+        products = [p for p in obj.products.all() if p.is_active]
+        return ProductListSerializer(products, many=True, context=self.context).data
 
 
 class BusinessListSerializer(serializers.ModelSerializer):

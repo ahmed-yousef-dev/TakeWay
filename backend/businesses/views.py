@@ -105,8 +105,11 @@ class BusinessProductListView(generics.ListAPIView):
 
     def get_queryset(self):
         business = self.get_business()
+        from django.db.models import Prefetch
         return business.product_categories.filter(is_active=True).prefetch_related(
-            "products"
+            Prefetch("products", queryset=Product.objects.filter(is_active=True).prefetch_related(
+                "offers", "business__offers", "business__offers__products"
+            ))
         )
 
     def list(self, request, *args, **kwargs):
@@ -126,7 +129,7 @@ class BusinessProductListView(generics.ListAPIView):
         # Products not assigned to any category
         uncategorised_qs = business.products.filter(
             is_active=True, product_category__isnull=True
-        )
+        ).prefetch_related("offers", "business__offers", "business__offers__products")
         uncategorised_data = ProductDetailSerializer(
             uncategorised_qs, many=True, context={"request": request}
         ).data
