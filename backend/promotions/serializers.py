@@ -19,6 +19,8 @@ class BannerSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
+            "subtitle",
+            "tag",
             "image",
             "target_type",
             "target_id",

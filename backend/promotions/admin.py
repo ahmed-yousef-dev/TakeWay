@@ -32,6 +32,7 @@ class BannerAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "title",
+        "tag",
         "scope_display",
         "target_type",
         "sort_order",
@@ -42,13 +43,13 @@ class BannerAdmin(admin.ModelAdmin):
     )
     list_filter = ("target_type", "location", "is_active")
     list_editable = ("sort_order", "is_active")
-    search_fields = ("title",)
+    search_fields = ("title", "subtitle", "tag")
     ordering = ("sort_order", "-created_at")
     readonly_fields = ("created_at", "updated_at")
 
     fieldsets = (
         (None, {
-            "fields": ("title", "image"),
+            "fields": ("title", "subtitle", "tag", "image"),
         }),
         (_("Deep-link target"), {
             "fields": ("target_type", "target_id", "target_url"),
