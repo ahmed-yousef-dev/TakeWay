@@ -55,7 +55,7 @@ class CartView(APIView):
 
     def get(self, request):
         cart, _ = Cart.objects.get_or_create(user=request.user)
-        serializer = CartSerializer(cart)
+        serializer = CartSerializer(cart, context={"request": request})
         return Response(serializer.data)
 
 
@@ -114,7 +114,7 @@ class CartItemViewSet(viewsets.GenericViewSet):
             )
             created = True
 
-        cart_serializer = CartSerializer(cart)
+        cart_serializer = CartSerializer(cart, context={"request": request})
         http_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(cart_serializer.data, status=http_status)
 
@@ -149,7 +149,7 @@ class CartItemViewSet(viewsets.GenericViewSet):
                     "items__product__business__offers",
                     "items__product__business__offers__products",
                 ).get(user=request.user)
-                return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
+                return Response(CartSerializer(cart, context={"request": request}).data, status=status.HTTP_200_OK)
             if quantity < 0:
                 return Response(
                     {"quantity": "Must be ≥ 0."},
@@ -162,7 +162,7 @@ class CartItemViewSet(viewsets.GenericViewSet):
 
         cart_item.save()
         cart, _ = Cart.objects.get_or_create(user=request.user)
-        return Response(CartSerializer(cart).data)
+        return Response(CartSerializer(cart, context={"request": request}).data)
 
     # DELETE /cart/items/{id}/
     def destroy(self, request, pk=None):
@@ -170,7 +170,7 @@ class CartItemViewSet(viewsets.GenericViewSet):
         cart_item = self.get_object()
         cart_item.delete()
         cart, _ = Cart.objects.get_or_create(user=request.user)
-        return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
+        return Response(CartSerializer(cart, context={"request": request}).data, status=status.HTTP_200_OK)
 
     # DELETE /cart/items/clear/
     @action(detail=False, methods=["delete"], url_path="clear")
@@ -178,7 +178,7 @@ class CartItemViewSet(viewsets.GenericViewSet):
         """Remove ALL items from the customer's cart."""
         cart, _ = Cart.objects.get_or_create(user=request.user)
         cart.items.all().delete()
-        return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
+        return Response(CartSerializer(cart, context={"request": request}).data, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +220,7 @@ class CheckoutView(APIView):
         except CheckoutError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+        return Response(OrderSerializer(order, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +300,7 @@ class OrderViewSet(viewsets.GenericViewSet):
 
         order.status = Order.Status.CANCELLED
         order.save(update_fields=["status"])
-        return Response(OrderSerializer(order).data)
+        return Response(OrderSerializer(order, context={"request": request}).data)
 
 
 # ---------------------------------------------------------------------------
@@ -379,9 +379,9 @@ class AnythingRequestViewSet(viewsets.GenericViewSet):
         queryset = self.get_queryset()
         page = self.paginate_queryset(queryset)
         if page is not None:
-            serializer = AnythingRequestListSerializer(page, many=True)
+            serializer = AnythingRequestListSerializer(page, many=True, context={"request": request})
             return self.get_paginated_response(serializer.data)
-        serializer = AnythingRequestListSerializer(queryset, many=True)
+        serializer = AnythingRequestListSerializer(queryset, many=True, context={"request": request})
         return Response(serializer.data)
 
     # GET /anything-requests/{id}/
