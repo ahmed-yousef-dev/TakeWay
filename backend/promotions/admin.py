@@ -19,8 +19,10 @@ Design decisions:
 from django.contrib import admin
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.db.models import Q
+from datetime import date
 
-from .models import Banner, Offer
+from .models import Banner, Offer, HotDeal
 
 
 # ── Banner ────────────────────────────────────────────────────────────────────
@@ -154,3 +156,66 @@ class OfferAdmin(admin.ModelAdmin):
         if obj.end_date and today > obj.end_date:
             return False
         return True
+
+# ── Hot Deals (Read-Only Audit View) ──────────────────────────────────────────
+
+@admin.register(HotDeal)
+class HotDealAdmin(admin.ModelAdmin):
+    """
+    A read-only admin view that queries and calculates the exact same 'hot_deals' 
+    shown on the mobile app homepage. This allows the ops team to audit discounts.
+    """
+    list_display = (
+        "id", 
+        "name", 
+        "business", 
+        "selling_price", 
+        "discounted_price_display", 
+        "active_offer_display"
+    )
+    list_filter = ("business",)
+    search_fields = ("name", "business__name")
+    
+    def get_queryset(self, request):
+        today = date.today()
+        
+        def _start_date_ok(today):
+            return Q(start_date__isnull=True) | Q(start_date__lte=today)
+
+        def _end_date_ok(today):
+            return Q(end_date__isnull=True) | Q(end_date__gte=today)
+
+        active_offers = Offer.objects.filter(
+            is_active=True
+        ).filter(_start_date_ok(today)).filter(_end_date_ok(today))
+        
+        business_wide_offers = active_offers.filter(products__isnull=True)
+
+        return super().get_queryset(request).filter(
+            is_active=True, is_available=True
+        ).filter(
+            Q(offers__in=active_offers) | Q(business__offers__in=business_wide_offers)
+        ).distinct().select_related("business").prefetch_related(
+            "offers", "business__offers", "business__offers__products"
+        )
+        
+    @admin.display(description=_("Discounted Price"))
+    def discounted_price_display(self, obj):
+        offer = obj.get_best_active_offer()
+        if offer:
+            return f"{offer.calculate_discounted_price(obj.selling_price)} EGP"
+        return "-"
+        
+    @admin.display(description=_("Active Offer applied"))
+    def active_offer_display(self, obj):
+        offer = obj.get_best_active_offer()
+        return offer.title if offer else "-"
+        
+    def has_add_permission(self, request):
+        return False # Can only be added by creating Offers
+        
+    def has_change_permission(self, request, obj=None):
+        return False # Read-only view
+        
+    def has_delete_permission(self, request, obj=None):
+        return False # Read-only view

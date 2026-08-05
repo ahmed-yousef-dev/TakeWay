@@ -214,3 +214,16 @@ class Offer(SoftDeleteMixin, TimestampMixin):
         else:
             discounted = base_price - self.discount_value
         return max(Decimal('0.00'), discounted)
+
+from businesses.models import Product
+
+class HotDeal(Product):
+    """
+    Proxy model purely for the Django Admin.
+    Allows operations team to easily view all currently active Hot Deals
+    under the Promotions app section without navigating to Products.
+    """
+    class Meta:
+        proxy = True
+        verbose_name = _("hot deal")
+        verbose_name_plural = _("hot deals")
