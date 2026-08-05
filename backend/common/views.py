@@ -106,7 +106,7 @@ class ReviewCreateView(generics.CreateAPIView):
                 {"detail": "You have already reviewed this entity."},
                 status=status.HTTP_409_CONFLICT,
             )
-        return Response(ReviewSerializer(review).data, status=status.HTTP_201_CREATED)
+        return Response(ReviewSerializer(review, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
 # ── Favorites ─────────────────────────────────────────────────────────────────
@@ -185,4 +185,4 @@ class FavoriteToggleView(APIView):
             except IntegrityError:
                 # Race condition: another request created it just now → treat as removed
                 return Response(status=status.HTTP_204_NO_CONTENT)
-            return Response(FavoriteSerializer(new_fav).data, status=status.HTTP_201_CREATED)
+            return Response(FavoriteSerializer(new_fav, context={"request": request}).data, status=status.HTTP_201_CREATED)
