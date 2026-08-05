@@ -352,18 +352,10 @@ class AnythingRequestImageSerializer(serializers.ModelSerializer):
         fields = ["id", "image"]
 
 
-class AnythingRequestWriteSerializer(serializers.ModelSerializer):
+class BaseAnythingRequestWriteSerializer(serializers.ModelSerializer):
     """
-    Write serializer used when the customer creates a new AnythingRequest.
-
-    - ``request_text``         — required text description.
-    - ``delivery_address_id``  — must be one of the authenticated user's saved addresses.
-    - ``images``               — optional list of image files (multipart/form-data).
-
-    The customer-facing fields ``status`` and ``admin_note`` are set by the
-    system / staff only and are NOT accepted via this serializer.
+    Base write serializer for AnythingRequest, containing shared fields and creation logic.
     """
-
     delivery_address_id = serializers.PrimaryKeyRelatedField(
         queryset=DeliveryAddress.objects.all(),
         source="delivery_address",
@@ -376,10 +368,6 @@ class AnythingRequestWriteSerializer(serializers.ModelSerializer):
         allow_empty=True,
         help_text="Optional image uploads (multipart/form-data).",
     )
-
-    class Meta:
-        model = AnythingRequest
-        fields = ["delivery_address_id", "request_text", "images"]
 
     def validate_delivery_address_id(self, value):
         """Ensure the address belongs to the requesting customer."""
@@ -398,6 +386,35 @@ class AnythingRequestWriteSerializer(serializers.ModelSerializer):
                 anything_request=anything_request, image=image_file
             )
         return anything_request
+
+
+class AnythingRequestTextWriteSerializer(BaseAnythingRequestWriteSerializer):
+    """
+    Write serializer for text-based AnythingRequests.
+    Requires text, images are optional.
+    """
+    request_text = serializers.CharField(required=True, allow_blank=False)
+
+    class Meta:
+        model = AnythingRequest
+        fields = ["delivery_address_id", "request_text", "images"]
+
+
+class AnythingRequestImageWriteSerializer(BaseAnythingRequestWriteSerializer):
+    """
+    Write serializer for image-based AnythingRequests.
+    Requires at least one image, text is optional.
+    """
+    
+    class Meta:
+        model = AnythingRequest
+        fields = ["delivery_address_id", "request_text", "images"]
+
+    def validate(self, attrs):
+        images = attrs.get("images", [])
+        if not images:
+            raise serializers.ValidationError({"images": "At least one image is required."})
+        return attrs
 
 
 class AnythingRequestSerializer(serializers.ModelSerializer):
