@@ -53,6 +53,20 @@ class Banner(SoftDeleteMixin, TimestampMixin):
         max_length=200,
         help_text=_("Displayed as alt-text / accessibility label."),
     )
+    subtitle = models.CharField(
+        _("subtitle"),
+        max_length=200,
+        blank=True,
+        default="",
+        help_text=_("Secondary text displayed below the main title."),
+    )
+    tag = models.CharField(
+        _("tag"),
+        max_length=50,
+        blank=True,
+        default="",
+        help_text=_("A short highlight label (e.g., 'New', 'Hot', 'Sale')."),
+    )
     image = models.ImageField(
         _("image"),
         upload_to="promotions/banners/",
