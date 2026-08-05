@@ -123,3 +123,34 @@ class TestRideRequestList:
         item = results[0]
         assert "status_display" in item
         assert "vehicle_type_display" in item
+
+
+# ── RideRequest: Cancel ───────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestRideRequestCancel:
+    def test_cancel_pending_request_success(self, auth_client):
+        client, customer = auth_client
+        req = RideRequest.objects.create(customer=customer, **VALID_PAYLOAD)
+        assert req.status == RideRequest.Status.PENDING
+
+        url = f"/api/v1/ride-requests/{req.id}/cancel/"
+        resp = client.post(url)
+        assert resp.status_code == status.HTTP_200_OK
+
+        req.refresh_from_db()
+        assert req.status == RideRequest.Status.CANCELLED
+
+    def test_cancel_approved_request_fails(self, auth_client):
+        client, customer = auth_client
+        req = RideRequest.objects.create(
+            customer=customer, **VALID_PAYLOAD, status=RideRequest.Status.APPROVED
+        )
+
+        url = f"/api/v1/ride-requests/{req.id}/cancel/"
+        resp = client.post(url)
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+        req.refresh_from_db()
+        assert req.status == RideRequest.Status.APPROVED
