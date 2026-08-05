@@ -9,7 +9,8 @@ from orders.models import Cart, CartItem, DeliveryAddress, Order, AnythingReques
 from orders.serializers import (
     AnythingRequestListSerializer,
     AnythingRequestSerializer,
-    AnythingRequestWriteSerializer,
+    AnythingRequestTextWriteSerializer,
+    AnythingRequestImageWriteSerializer,
     CartItemWriteSerializer,
     CartSerializer,
     CheckoutSerializer,
@@ -326,21 +327,35 @@ class AnythingRequestViewSet(viewsets.GenericViewSet):
         )
 
     def get_serializer_class(self):
-        if self.action == "create":
-            return AnythingRequestWriteSerializer
+        if self.action == "text":
+            return AnythingRequestTextWriteSerializer
+        if self.action == "image":
+            return AnythingRequestImageWriteSerializer
         if self.action == "list":
             return AnythingRequestListSerializer
         return AnythingRequestSerializer
 
-    # POST /anything-requests/
-    def create(self, request):
+    @action(detail=False, methods=["post"], url_path="text")
+    def text(self, request):
         """
-        Submit a new AnythingRequest.
+        Submit a new text-based AnythingRequest.
+        """
+        serializer = AnythingRequestTextWriteSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        anything_request = serializer.save(customer=request.user)
+        return Response(
+            AnythingRequestSerializer(anything_request, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
-        Accepts ``multipart/form-data`` so that images can be attached alongside
-        the text. Up to architecture-specified limits (5 MB per image).
+    @action(detail=False, methods=["post"], url_path="image")
+    def image(self, request):
         """
-        serializer = AnythingRequestWriteSerializer(
+        Submit a new image-based AnythingRequest.
+        """
+        serializer = AnythingRequestImageWriteSerializer(
             data=request.data, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
