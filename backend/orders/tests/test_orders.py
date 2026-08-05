@@ -1098,22 +1098,14 @@ class TestDeliveryAddressCRUD:
         response = self.client.delete(url)
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_all_label_choices_are_accepted(self):
-        """All three label choices (home, work, other) must be accepted by the API."""
-        for label in ("home", "work", "other"):
+    def test_custom_label_accepted(self):
+        """Custom strings like 'Beach Cabin' or 'spaceship' must be accepted."""
+        for label in ("Beach Cabin", "spaceship", "My Home"):
             response = self.client.post(
                 self.list_url,
                 {"label": label, "address_details": f"Test {label}"},
             )
             assert response.status_code == status.HTTP_201_CREATED, f"Label '{label}' rejected"
-
-    def test_invalid_label_is_rejected(self):
-        """An unrecognised label must return 400."""
-        response = self.client.post(
-            self.list_url,
-            {"label": "spaceship", "address_details": "Moon base"},
-        )
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_unauthenticated_cannot_create_address(self):
         anon = APIClient()
