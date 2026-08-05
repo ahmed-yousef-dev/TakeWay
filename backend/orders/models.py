@@ -180,6 +180,13 @@ class Order(SoftDeleteMixin, TimestampMixin):
         choices=Status.choices,
         default=Status.PENDING,
     )
+    confirmed_eta = models.CharField(
+        _("confirmed ETA"),
+        max_length=50,
+        blank=True,
+        default="",
+        help_text=_("e.g. '45 mins'. Set by admin when accepting the order."),
+    )
     # Totals are snapshotted here to prevent drift
     subtotal = models.DecimalField(
         _("subtotal"),

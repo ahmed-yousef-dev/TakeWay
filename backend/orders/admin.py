@@ -184,7 +184,7 @@ class OrderAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {
-            "fields": ("customer", "delivery_address", "status"),
+            "fields": ("customer", "delivery_address", "status", "confirmed_eta"),
         }),
         (_("Totals"), {
             "fields": ("subtotal", "delivery_fee", "total_amount"),
