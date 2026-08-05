@@ -115,6 +115,7 @@ class CartItemReadSerializer(serializers.ModelSerializer):
 
     product_id = serializers.IntegerField(source="product.id")
     product_name = serializers.CharField(source="product.name")
+    product_image = serializers.ImageField(source="product.image", read_only=True)
     variant_id = serializers.SerializerMethodField()
     variant_name = serializers.SerializerMethodField()
     unit_price = serializers.SerializerMethodField()
@@ -126,6 +127,7 @@ class CartItemReadSerializer(serializers.ModelSerializer):
             "id",
             "product_id",
             "product_name",
+            "product_image",
             "variant_id",
             "variant_name",
             "unit_price",
@@ -197,7 +199,7 @@ class CartSerializer(serializers.ModelSerializer):
         # Build group dicts with subtotals
         groups = []
         for group in business_map.values():
-            item_serializer = CartItemReadSerializer(group["items"], many=True)
+            item_serializer = CartItemReadSerializer(group["items"], many=True, context=self.context)
             subtotal = sum(
                 (item["line_total"] for item in item_serializer.data),
                 Decimal("0.00"),
@@ -255,18 +257,29 @@ class CheckoutSerializer(serializers.Serializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     """Read-only snapshot of a purchased item."""
+    
+    product_image = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = [
             "id",
             "product_name",
+            "product_image",
             "variant_name",
             "unit_price",
             "quantity",
             "total_price",
             "note",
         ]
+
+    def get_product_image(self, obj):
+        if obj.product and obj.product.image:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.product.image.url)
+            return obj.product.image.url
+        return None
 
 
 class SubOrderSerializer(serializers.ModelSerializer):
