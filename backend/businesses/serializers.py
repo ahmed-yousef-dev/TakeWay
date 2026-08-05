@@ -160,6 +160,7 @@ class BusinessListSerializer(serializers.ModelSerializer):
             "avg_rating",
             "review_count",
             "is_featured",
+            "typical_delivery_time",
         ]
 
 
@@ -190,6 +191,7 @@ class BusinessDetailSerializer(serializers.ModelSerializer):
             "avg_rating",
             "review_count",
             "is_featured",
+            "typical_delivery_time",
             "working_hours",
         ]
 

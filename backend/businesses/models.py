@@ -123,6 +123,13 @@ class Business(SoftDeleteMixin, TimestampMixin):
         default=False,
         help_text=_("Featured businesses appear in the homepage featured section."),
     )
+    typical_delivery_time = models.CharField(
+        _("typical delivery time"),
+        max_length=50,
+        blank=True,
+        default="",
+        help_text=_("e.g. '30-45 mins'. Shown to customers before ordering."),
+    )
 
     class Meta:
         verbose_name = _("business")

@@ -64,7 +64,7 @@ class BusinessAdmin(admin.ModelAdmin):
         (None, {"fields": ("name", "description", "category", "location", "owner")}),
         (_("Media"), {"fields": ("logo", "cover_image")}),
         (_("Contact"), {"fields": ("phone", "address")}),
-        (_("Status"), {"fields": ("is_featured", "is_active")}),
+        (_("Status & Operations"), {"fields": ("is_featured", "is_active", "typical_delivery_time")}),
         (_("Stats"), {"fields": ("avg_rating", "review_count"), "classes": ("collapse",)}),
         (_("Timestamps"), {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )
