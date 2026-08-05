@@ -42,6 +42,7 @@ class RideRequest(TimestampMixin):
         APPROVED = "approved", _("Approved")
         REJECTED = "rejected", _("Rejected")
         COMPLETED = "completed", _("Completed")
+        CANCELLED = "cancelled", _("Cancelled")
 
     customer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
