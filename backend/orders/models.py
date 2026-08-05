@@ -343,6 +343,7 @@ class AnythingRequest(SoftDeleteMixin, TimestampMixin):
         ACCEPTED = "accepted", _("Accepted")
         REJECTED = "rejected", _("Rejected")
         ORDERED = "ordered", _("Converted to Order")
+        CANCELLED = "cancelled", _("Cancelled")
 
     customer = models.ForeignKey(
         "accounts.User",
