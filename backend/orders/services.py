@@ -35,10 +35,17 @@ class CheckoutError(Exception):
 
 
 def _calculate_cart_total(items) -> Decimal:
-    """Return the grand total of the given CartItem queryset."""
+    """Return the grand total of the given CartItem queryset, including active discounts."""
     total = Decimal("0.00")
     for item in items:
-        price = item.variant.selling_price if item.variant_id else item.product.selling_price
+        offer = item.product.get_best_active_offer()
+        base_price = item.variant.selling_price if item.variant_id else item.product.selling_price
+        
+        if offer:
+            price = offer.calculate_discounted_price(base_price)
+        else:
+            price = base_price
+            
         total += price * item.quantity
     return total
 
@@ -80,6 +87,8 @@ def checkout(user, delivery_address_id: int) -> Order:
     items = list(
         CartItem.objects.filter(cart=cart).select_related(
             "product__business", "variant"
+        ).prefetch_related(
+            "product__offers", "product__business__offers", "product__business__offers__products"
         )
     )
 

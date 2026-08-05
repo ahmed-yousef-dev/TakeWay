@@ -140,7 +140,15 @@ class CartItemViewSet(viewsets.GenericViewSet):
                 )
             if quantity == 0:
                 cart_item.delete()
-                cart, _ = Cart.objects.get_or_create(user=request.user)
+                # Get cart and ensure everything is prefetched for fast discount calculations
+                cart = Cart.objects.prefetch_related(
+                    "items__product", 
+                    "items__variant", 
+                    "items__product__business",
+                    "items__product__offers",
+                    "items__product__business__offers",
+                    "items__product__business__offers__products",
+                ).get(user=request.user)
                 return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
             if quantity < 0:
                 return Response(

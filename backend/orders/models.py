@@ -300,14 +300,21 @@ class OrderItem(TimestampMixin):
     def create_snapshot(cls, cart_item, sub_order):
         """
         Creates an immutable OrderItem snapshot from a CartItem.
-        Locks in the current price and names so future catalog edits don't affect this order.
+        Locks in the current price (including active offers) and names so future catalog edits don't affect this order.
         """
+        offer = cart_item.product.get_best_active_offer()
+        
         if cart_item.variant:
-            unit_price = cart_item.variant.selling_price
+            base_price = cart_item.variant.selling_price
             variant_name = cart_item.variant.name
         else:
-            unit_price = cart_item.product.selling_price
+            base_price = cart_item.product.selling_price
             variant_name = ""
+
+        if offer:
+            unit_price = offer.calculate_discounted_price(base_price)
+        else:
+            unit_price = base_price
 
         total_price = unit_price * cart_item.quantity
 

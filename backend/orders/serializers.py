@@ -143,9 +143,15 @@ class CartItemReadSerializer(serializers.ModelSerializer):
         return obj.variant.name if obj.variant_id else None
 
     def get_unit_price(self, obj: CartItem) -> Decimal:
+        offer = obj.product.get_best_active_offer()
         if obj.variant_id:
-            return obj.variant.selling_price
-        return obj.product.selling_price
+            base_price = obj.variant.selling_price
+        else:
+            base_price = obj.product.selling_price
+        
+        if offer:
+            return offer.calculate_discounted_price(base_price)
+        return base_price
 
     def get_line_total(self, obj: CartItem) -> Decimal:
         return self.get_unit_price(obj) * obj.quantity
@@ -185,6 +191,8 @@ class CartSerializer(serializers.ModelSerializer):
         items = list(
             cart.items.select_related(
                 "product__business", "variant"
+            ).prefetch_related(
+                "product__offers", "product__business__offers", "product__business__offers__products"
             ).order_by("product__business_id", "created_at")
         )
 
