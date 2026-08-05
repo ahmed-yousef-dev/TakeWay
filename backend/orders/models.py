@@ -21,11 +21,6 @@ class DeliveryAddress(SoftDeleteMixin, TimestampMixin):
     Checkout requires one of these to ensure a valid delivery point.
     """
 
-    class Label(models.TextChoices):
-        HOME = "home", _("Home")
-        WORK = "work", _("Work")
-        OTHER = "other", _("Other")
-
     user = models.ForeignKey(
         "accounts.User",
         on_delete=models.CASCADE,
@@ -34,9 +29,7 @@ class DeliveryAddress(SoftDeleteMixin, TimestampMixin):
     )
     label = models.CharField(
         _("label"),
-        max_length=20,
-        choices=Label.choices,
-        default=Label.HOME,
+        max_length=50,
     )
     address_details = models.TextField(
         _("address details"),
@@ -64,7 +57,7 @@ class DeliveryAddress(SoftDeleteMixin, TimestampMixin):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.get_label_display()} - {self.user.name}"
+        return f"{self.label} - {self.user.name}"
 
     def anonymize(self):
         """

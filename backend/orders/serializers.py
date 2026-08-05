@@ -335,7 +335,7 @@ class OrderListSerializer(serializers.ModelSerializer):
 
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     address_label = serializers.CharField(
-        source="delivery_address.get_label_display", read_only=True
+        source="delivery_address.label", read_only=True
     )
     address_details = serializers.CharField(
         source="delivery_address.address_details", read_only=True
@@ -481,7 +481,7 @@ class AnythingRequestListSerializer(serializers.ModelSerializer):
         source="get_status_display", read_only=True
     )
     address_label = serializers.CharField(
-        source="delivery_address.get_label_display", read_only=True
+        source="delivery_address.label", read_only=True
     )
     image_count = serializers.SerializerMethodField()
 
