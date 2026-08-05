@@ -112,7 +112,7 @@ class VerifyOTPView(APIView):
             {
                 "access": tokens["access"],
                 "refresh": tokens["refresh"],
-                "user": UserSerializer(user).data,
+                "user": UserSerializer(user, context={"request": request}).data,
             },
             status=status.HTTP_200_OK,
         )
@@ -149,7 +149,7 @@ class LoginView(APIView):
             {
                 "access": tokens["access"],
                 "refresh": tokens["refresh"],
-                "user": UserSerializer(user).data,
+                "user": UserSerializer(user, context={"request": request}).data,
             },
             status=status.HTTP_200_OK,
         )
@@ -189,7 +189,7 @@ class ForgotPasswordView(APIView):
             {
                 "access": tokens["access"],
                 "refresh": tokens["refresh"],
-                "user": UserSerializer(user).data,
+                "user": UserSerializer(user, context={"request": request}).data,
             },
             status=status.HTTP_200_OK,
         )
