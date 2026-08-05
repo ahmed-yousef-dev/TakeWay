@@ -351,6 +351,7 @@ class AnythingRequest(SoftDeleteMixin, TimestampMixin):
     )
     request_text = models.TextField(
         _("request text"),
+        blank=True,
         help_text=_("What does the customer want?"),
     )
     status = models.CharField(
